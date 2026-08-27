@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, Settings, AlertTriangle, Key, CheckCircle, VolumeX, Shield, Trash2, X } from 'lucide-react';
+import {
+  Search,
+  Settings,
+  AlertTriangle,
+  Key,
+  CheckCircle,
+  VolumeX,
+  Volume2,
+  Shield,
+  Trash2,
+  X,
+  Menu,
+  Lightbulb,
+  Compass,
+  BookOpen,
+} from 'lucide-react';
 import {
   characters,
   CATEGORIES,
@@ -13,6 +28,7 @@ import { ChatTranscript } from './components/ChatTranscript';
 import { MessageInputBar } from './components/MessageInputBar';
 import { BrujulaModal } from './components/BrujulaModal';
 import { VoiceConfigModal } from './components/VoiceConfigModal';
+import { MobileInfoModal } from './components/MobileInfoModal';
 import {
   SpeechRecognizer,
   isSpeechRecognitionSupported,
@@ -43,6 +59,8 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBrujulaOpen, setIsBrujulaOpen] = useState(false);
   const [isVoiceConfigOpen, setIsVoiceConfigOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(() => {
     try {
       return localStorage.getItem('app_auto_speak_enabled') === 'true';
@@ -431,9 +449,9 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-[#0d1117] text-[#e6edf3] font-sans overflow-hidden select-none">
+    <div className="flex h-[100dvh] max-h-[100dvh] min-h-[100dvh] w-screen bg-[#0d1117] text-[#e6edf3] font-sans overflow-hidden select-none">
       
-      {/* 1. BARRA LATERAL IZQUIERDA CON GUÍA DE INDAGACIÓN CRÍTICA */}
+      {/* 1. BARRA LATERAL IZQUIERDA CON GUÍA DE INDAGACIÓN CRÍTICA (Escritorio + Drawer Móvil) */}
       <Sidebar
         activeCategory={activeCategory}
         onSelectCategory={(catId) => {
@@ -448,13 +466,103 @@ function App() {
         onSelectQuestion={(q) => setPrefilledInput(q)}
         onOpenBrujula={() => setIsBrujulaOpen(true)}
         isProcessing={appState === 'processing'}
+        isOpenMobile={isSidebarOpen}
+        onCloseMobile={() => setIsSidebarOpen(false)}
       />
 
-      {/* 2. PANEL PRINCIPAL */}
-      <main className="flex-1 flex flex-col h-full min-h-0 bg-[#0b0e14] overflow-hidden p-3 sm:p-5 space-y-3 sm:space-y-4">
+      {/* 2. PANEL PRINCIPAL (100dvh) */}
+      <main className="flex-1 flex flex-col h-full min-h-0 bg-[#0b0e14] overflow-hidden p-2 sm:p-4 md:p-5 space-y-2 sm:space-y-3 md:space-y-4">
         
-        {/* Barra Superior: Búsqueda + Configuración + Chips de Personajes */}
-        <div className="space-y-3 shrink-0">
+        {/* ========================================================= */}
+        {/* A. BARRA SUPERIOR RESPONSIVE PARA MÓVILES (< md)          */}
+        {/* ========================================================= */}
+        <div className="md:hidden flex items-center justify-between gap-2 p-2 bg-[#12161f] border border-[#21262d] rounded-2xl shrink-0 shadow-lg select-none">
+          {/* Lado izquierdo: Botón Menú (Drawer) + Avatar & Nombre */}
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-2 rounded-xl text-zinc-300 hover:text-white bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer shrink-0"
+              title="Abrir menú de categorías y brújula"
+            >
+              <Menu className="w-4 h-4 text-[#58a6ff]" />
+            </button>
+
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
+                {activeCharacter?.avatar ? (
+                  <img
+                    src={activeCharacter.avatar}
+                    alt={activeCharacter.name}
+                    className="w-full h-full object-cover grayscale contrast-125"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <span className="text-xs">🏛️</span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-xs font-bold text-zinc-100 truncate">
+                    {activeCharacter?.name}
+                  </h2>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse shrink-0" />
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400 block truncate">
+                  {activeCharacter?.era}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Lado derecho: Toggle Auto-Voz + Info Analítica + Config */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Toggle Auto-Voz en Móvil */}
+            <button
+              type="button"
+              onClick={handleToggleAutoSpeak}
+              className={`p-2 rounded-xl transition-all border cursor-pointer ${
+                autoSpeakEnabled
+                  ? 'bg-[#1f6feb]/20 text-[#58a6ff] border-[#1f6feb]/50'
+                  : 'bg-[#161b22] text-zinc-400 border-[#30363d]'
+              }`}
+              title={autoSpeakEnabled ? 'Voz activada' : 'Voz silenciada'}
+            >
+              {autoSpeakEnabled ? (
+                <Volume2 className="w-4 h-4 text-[#58a6ff]" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-zinc-500" />
+              )}
+            </button>
+
+            {/* Botón Info / Foco Analítico en Móvil */}
+            <button
+              type="button"
+              onClick={() => setIsMobileInfoOpen(true)}
+              className="p-2 rounded-xl text-amber-400 hover:text-amber-300 bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer"
+              title="Ver foco analítico y biblioteca de lecturas"
+            >
+              <Lightbulb className="w-4 h-4" />
+            </button>
+
+            {/* Botón Ajustes */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-white bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer"
+              title="Configuración"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* B. BARRA SUPERIOR PARA ESCRITORIO (>= md)                  */}
+        {/* ========================================================= */}
+        <div className="hidden md:block space-y-3 shrink-0">
           <div className="flex items-center justify-between gap-3">
             {/* Input de Búsqueda */}
             <div className="relative w-full max-w-xs sm:max-w-sm">
@@ -503,8 +611,10 @@ function App() {
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Chips horizontales de personajes */}
+        {/* Chips horizontales de personajes (Móvil y Escritorio) */}
+        <div className="shrink-0">
           <CategoryChips
             characters={currentCategoryCharacters}
             selectedId={selectedId}
@@ -529,8 +639,8 @@ function App() {
           </div>
         )}
 
-        {/* Cabecera del Personaje Activo (Centrada) */}
-        <div className="shrink-0 max-w-4xl mx-auto w-full px-3 sm:px-6">
+        {/* Cabecera del Personaje Activo (Visible en Escritorio) */}
+        <div className="hidden md:block shrink-0 max-w-4xl mx-auto w-full px-3 sm:px-6">
           <CharacterHeader
             character={activeCharacter}
             onResetSession={handleResetSession}
@@ -540,7 +650,7 @@ function App() {
           />
         </div>
 
-        {/* Cuerpo del Chat / Transcripción del Debate (Centrado con Ancho Óptimo) */}
+        {/* Cuerpo del Chat / Transcripción del Debate (Flex-1 con Ancho Óptimo) */}
         <ChatTranscript
           messages={messages}
           character={activeCharacter}
@@ -552,7 +662,7 @@ function App() {
         />
 
         {/* Barra Inferior de Entrada (Fija y Centrada) */}
-        <div className="shrink-0 pt-1">
+        <div className="shrink-0 pt-0.5">
           <MessageInputBar
             placeholder={activeCharacter.placeholder}
             disclaimer={activeCharacter.disclaimer}
@@ -570,6 +680,15 @@ function App() {
         </div>
 
       </main>
+
+      {/* Modal / Drawer de Información para Móviles */}
+      <MobileInfoModal
+        isOpen={isMobileInfoOpen}
+        onClose={() => setIsMobileInfoOpen(false)}
+        character={activeCharacter}
+        onSelectQuestion={(q) => setPrefilledInput(q)}
+        isProcessing={appState === 'processing'}
+      />
 
       {/* Modal de Configuración General */}
       {isSettingsOpen && (
