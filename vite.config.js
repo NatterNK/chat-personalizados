@@ -9,6 +9,7 @@ const ttsDevPlugin = () => ({
     server.middlewares.use('/api/tts', async (req, res, next) => {
       if (req.method !== 'POST') {
         res.statusCode = 405;
+        res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ error: 'Method not allowed' }));
         return;
       }
@@ -23,15 +24,12 @@ const ttsDevPlugin = () => ({
           const parsed = body ? JSON.parse(body) : {};
           const { text, voice = 'es-ES-AlvaroNeural', rate = '0%', pitch = '0%' } = parsed;
 
-          if (!text) {
+          if (!text || typeof text !== 'string' || !text.trim()) {
             res.statusCode = 400;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'Text is required' }));
+            res.end(JSON.stringify({ error: 'Valid text is required' }));
             return;
           }
-
-          const tts = new MsEdgeTTS();
-          await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
           const cleanText = text
             .replace(/```[\s\S]*?```/g, ' ')
@@ -43,23 +41,46 @@ const ttsDevPlugin = () => ({
             .replace(/^\s*[-*+>]\s+/gm, '')
             .trim();
 
-          const { audioStream } = tts.toStream(cleanText, { rate, pitch });
+          if (!cleanText) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Cleaned text is empty' }));
+            return;
+          }
+
+          const tts = new MsEdgeTTS();
+          await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
+          const streamPromise = new Promise(async (resolve, reject) => {
+            const timer = setTimeout(() => {
+              reject(new Error('Edge-TTS stream timeout'));
+            }, 12000);
+
+            try {
+              const { audioStream } = tts.toStream(cleanText, { rate, pitch });
+              const chunks = [];
+              for await (const chunk of audioStream) {
+                chunks.push(chunk);
+              }
+              clearTimeout(timer);
+              resolve(Buffer.concat(chunks));
+            } catch (err) {
+              clearTimeout(timer);
+              reject(err);
+            }
+          });
+
+          const buffer = await streamPromise;
 
           res.statusCode = 200;
           res.setHeader('Content-Type', 'audio/mpeg');
           res.setHeader('Cache-Control', 'public, max-age=86400');
-
-          const chunks = [];
-          for await (const chunk of audioStream) {
-            chunks.push(chunk);
-          }
-          const buffer = Buffer.concat(chunks);
           res.end(buffer);
         } catch (err) {
-          console.error('[Vite Dev TTS Error]:', err);
+          console.error('[Vite Dev TTS Error]:', err.message);
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: err.message }));
+          res.end(JSON.stringify({ error: err.message || 'Error generating neural audio', fallback: true }));
         }
       });
     });

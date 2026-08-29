@@ -75,7 +75,7 @@ export const ChatTranscript = ({
 
               {/* Burbuja del Mensaje */}
               <div
-                className={`group relative max-w-[88%] sm:max-w-[82%] rounded-2xl p-4 transition-all duration-200 shadow-md ${
+                className={`group relative max-w-[88%] sm:max-w-[82%] rounded-2xl p-4 transition-all duration-200 shadow-md select-text ${
                   isUser
                     ? 'bg-[#1a2b47] border border-[#1f6feb]/50 text-blue-50 rounded-tr-sm ml-6'
                     : `bg-[#161b22] border ${
@@ -86,7 +86,7 @@ export const ChatTranscript = ({
                 }`}
               >
                 {/* Header del Mensaje */}
-                <div className="flex items-center justify-between gap-3 mb-1.5 text-[11px] text-zinc-400 font-medium">
+                <div className="flex items-center justify-between gap-3 mb-1.5 text-[11px] text-zinc-400 font-medium select-none">
                   <span className="font-mono">
                     {isUser ? 'TÚ' : character?.name?.toUpperCase()}
                   </span>
@@ -97,7 +97,7 @@ export const ChatTranscript = ({
 
                 {/* Imagen adjunta en el mensaje si existe */}
                 {msg.image && (
-                  <div className="mb-2.5 rounded-xl overflow-hidden border border-[#30363d] max-w-xs shadow-md bg-black/30">
+                  <div className="mb-2.5 rounded-xl overflow-hidden border border-[#30363d] max-w-xs shadow-md bg-black/30 select-none">
                     <img
                       src={msg.image}
                       alt="Imagen adjunta"
@@ -108,7 +108,7 @@ export const ChatTranscript = ({
 
                 {/* Texto con wrap y saltos de línea perfectos */}
                 {msg.text && (
-                  <div className="text-sm sm:text-[15px] leading-relaxed break-words whitespace-pre-wrap font-sans text-zinc-100">
+                  <div className="text-sm sm:text-[15px] leading-relaxed break-words whitespace-pre-wrap font-sans text-zinc-100 select-text cursor-text">
                     {msg.text}
                   </div>
                 )}

@@ -109,6 +109,7 @@ export const NEURAL_VOICES_CATALOG = [
 // Instancia singleton de audio HTML5 para control de ciclo de vida
 let currentAudio = null;
 let currentBlobUrl = null;
+let playSessionCounter = 0;
 
 /**
  * Convierte un multiplicador de velocidad (ej. 1.14 o 0.88) a formato porcentaje string (+14% o -12%)
@@ -131,9 +132,13 @@ export const formatPitchPercent = (pitchVal) => {
 };
 
 /**
- * Detiene cualquier audio neuronal en curso y libera recursos
+ * Detiene cualquier audio en curso (tanto HTML5 Audio como Web Speech API) y libera recursos
  */
-export const stopNeuralAudio = () => {
+export const stopAllAudio = () => {
+  // Incrementar contador para invalidar peticiones en vuelo
+  playSessionCounter++;
+
+  // 1. Detener audio HTML5
   if (currentAudio) {
     try {
       currentAudio.pause();
@@ -143,13 +148,19 @@ export const stopNeuralAudio = () => {
     currentAudio = null;
   }
 
+  // 2. Liberar blob URL
   if (currentBlobUrl) {
     try {
       URL.revokeObjectURL(currentBlobUrl);
     } catch (e) {}
     currentBlobUrl = null;
   }
+
+  // 3. Detener síntesis nativa del navegador
+  cancelSpeech();
 };
+
+export const stopNeuralAudio = stopAllAudio;
 
 /**
  * Obtiene la mejor voz neuronal configurada para un pensador
@@ -175,7 +186,7 @@ export const getBestNeuralVoiceForCharacter = (character) => {
 
 /**
  * Reproduce texto con Voz Neuronal Humana (Azure / Edge TTS) mediante la API Serverless
- * Si falla, aplica fallback automático a la Web Speech API nativa
+ * Si falla, aplica fallback automático blindado a la Web Speech API nativa sin solapamiento
  */
 export const playNeuralVoice = async (
   text,
@@ -189,9 +200,9 @@ export const playNeuralVoice = async (
     onError = () => {},
   } = {}
 ) => {
-  // Limpiar cualquier reproducción activa (tanto Web Speech como HTML5 Audio)
-  stopNeuralAudio();
-  cancelSpeech();
+  // Limpiar cualquier audio previo
+  stopAllAudio();
+  const currentSessionId = playSessionCounter;
 
   const cleanText = cleanTextForSpeech(text);
   if (!cleanText) {
@@ -205,6 +216,9 @@ export const playNeuralVoice = async (
   const targetPitch = formatPitchPercent(pitch ?? savedPref?.pitch ?? character?.pitch ?? 1.0);
 
   try {
+    const controller = new AbortController();
+    const fetchTimer = setTimeout(() => controller.abort(), 9000);
+
     const response = await fetch('/api/tts', {
       method: 'POST',
       headers: {
@@ -216,15 +230,28 @@ export const playNeuralVoice = async (
         rate: targetRate,
         pitch: targetPitch,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(fetchTimer);
+
+    // Si otra reproducción se inició mientras se hacía el fetch, descartar este resultado
+    if (currentSessionId !== playSessionCounter) {
+      return null;
+    }
+
     if (!response.ok) {
-      throw new Error(`TTS API respondio con status: ${response.status}`);
+      throw new Error(`TTS API respondió con status: ${response.status}`);
     }
 
     const blob = await response.blob();
     if (!blob || blob.size === 0) {
       throw new Error('Blob de audio vacío recibido del servidor.');
+    }
+
+    // Doble chequeo de sesión antes de crear el objeto Audio
+    if (currentSessionId !== playSessionCounter) {
+      return null;
     }
 
     const audioUrl = URL.createObjectURL(blob);
@@ -234,19 +261,42 @@ export const playNeuralVoice = async (
     currentAudio = audio;
 
     audio.onplay = () => {
-      onStart();
+      if (currentSessionId === playSessionCounter) {
+        onStart();
+      }
     };
 
     audio.onended = () => {
-      stopNeuralAudio();
-      onEnd();
+      if (currentSessionId === playSessionCounter) {
+        stopAllAudio();
+        onEnd();
+      }
     };
 
     audio.onerror = (e) => {
-      console.warn('[Neural Audio Error, aplicando fallback nativo]:', e);
-      stopNeuralAudio();
-      // Fallback a Web Speech API
-      speakPhilosopherText(cleanText, {
+      console.warn('[Neural Audio Error -> Fallback nativo]:', e);
+      if (currentSessionId === playSessionCounter) {
+        stopAllAudio();
+        // Fallback a Web Speech API garantizando cero solapamiento
+        speakPhilosopherText(cleanText, {
+          character,
+          rate: typeof rate === 'number' ? rate : 1.0,
+          pitch: typeof pitch === 'number' ? pitch : 1.0,
+          onStart,
+          onEnd,
+          onError,
+        });
+      }
+    };
+
+    await audio.play();
+    return audio;
+  } catch (err) {
+    console.warn('[Neural TTS Falló -> Activando Fallback Nativo WebSpeech]:', err.message);
+    if (currentSessionId === playSessionCounter) {
+      stopAllAudio();
+      // Fallback nativo garantizando cero solapamiento
+      return speakPhilosopherText(cleanText, {
         character,
         rate: typeof rate === 'number' ? rate : 1.0,
         pitch: typeof pitch === 'number' ? pitch : 1.0,
@@ -254,21 +304,7 @@ export const playNeuralVoice = async (
         onEnd,
         onError,
       });
-    };
-
-    await audio.play();
-    return audio;
-  } catch (err) {
-    console.warn('[Neural TTS Fetch Falló -> Activando Fallback Nativo WebSpeech]:', err.message);
-    stopNeuralAudio();
-    // Fallback nativo
-    return speakPhilosopherText(cleanText, {
-      character,
-      rate: typeof rate === 'number' ? rate : 1.0,
-      pitch: typeof pitch === 'number' ? pitch : 1.0,
-      onStart,
-      onEnd,
-      onError,
-    });
+    }
+    return null;
   }
 };

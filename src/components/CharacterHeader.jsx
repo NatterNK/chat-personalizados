@@ -51,7 +51,7 @@ export const CharacterHeader = ({
           </div>
 
           {/* Cita Completa con salto de línea natural y tipografía editorial */}
-          <p className="text-xs sm:text-sm text-zinc-400 font-serif italic whitespace-normal leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-300 font-serif italic break-words whitespace-normal leading-relaxed select-text cursor-text">
             "{character.quote}"
           </p>
         </div>

@@ -9,6 +9,7 @@ import {
   Volume2,
   Shield,
   Trash2,
+  RotateCcw,
   X,
   Menu,
   Lightbulb,
@@ -487,7 +488,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-[100dvh] w-screen bg-[#0d1117] text-[#e6edf3] font-sans overflow-hidden select-none">
+    <div className="flex h-[100dvh] max-h-[100dvh] min-h-[100dvh] w-screen bg-[#0d1117] text-[#e6edf3] font-sans overflow-hidden">
       
       {/* 1. BARRA LATERAL IZQUIERDA CON GUÍA DE INDAGACIÓN CRÍTICA (Escritorio + Drawer Móvil) */}
       <Sidebar
@@ -555,7 +556,7 @@ function App() {
             </div>
           </div>
 
-          {/* Lado derecho: Toggle Auto-Voz + Info Analítica + Config */}
+          {/* Lado derecho: Toggle Auto-Voz + Reiniciar Diálogo + Info Analítica + Config */}
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Toggle Auto-Voz en Móvil */}
             <button
@@ -573,6 +574,17 @@ function App() {
               ) : (
                 <VolumeX className="w-4 h-4 text-zinc-500" />
               )}
+            </button>
+
+            {/* Botón Reiniciar Diálogo Actual en Móvil */}
+            <button
+              type="button"
+              onClick={handleResetSession}
+              disabled={appState === 'processing'}
+              className="p-2 rounded-xl text-zinc-400 hover:text-red-300 hover:bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer disabled:opacity-40"
+              title={`Reiniciar diálogo con ${activeCharacter?.name}`}
+            >
+              <RotateCcw className="w-4 h-4" />
             </button>
 
             {/* Botón Info / Foco Analítico en Móvil */}
@@ -600,7 +612,7 @@ function App() {
         {/* ========================================================= */}
         {/* B. BARRA SUPERIOR PARA ESCRITORIO (>= md)                  */}
         {/* ========================================================= */}
-        <div className="hidden md:block space-y-3 shrink-0">
+        <div className="hidden md:block space-y-3 shrink-0 select-none">
           <div className="flex items-center justify-between gap-3">
             {/* Input de Búsqueda */}
             <div className="relative w-full max-w-xs sm:max-w-sm">
@@ -624,6 +636,17 @@ function App() {
 
             {/* Acciones de la Barra Superior */}
             <div className="flex items-center gap-2">
+              {/* Botón Reiniciar Diálogo Activo */}
+              <button
+                onClick={handleResetSession}
+                disabled={appState === 'processing'}
+                className="p-2 text-zinc-400 hover:text-red-300 hover:bg-[#161b22] border border-[#30363d] rounded-xl transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                title={`Reiniciar conversación con ${activeCharacter?.name}`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="text-xs font-mono hidden lg:inline">Reiniciar</span>
+              </button>
+
               {/* Indicador de Gemini */}
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#161b22] border border-[#30363d] text-xs font-mono">
                 {hasApiKey ? (

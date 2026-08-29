@@ -42,7 +42,7 @@ export const MobileInfoModal = ({
                   {character.era}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 font-serif italic truncate max-w-[220px]">
+              <p className="text-xs sm:text-sm text-slate-300 font-serif italic break-words whitespace-normal leading-relaxed mt-0.5 select-text">
                 "{character.quote}"
               </p>
             </div>
