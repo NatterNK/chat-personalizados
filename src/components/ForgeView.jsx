@@ -125,7 +125,15 @@ export const ForgeView = ({
   // Personaje actual de la etapa
   const currentStepCharacter = useMemo(() => {
     if (!currentStep) return null;
-    return getCharacterById(currentStep.characterId);
+    return (
+      getCharacterById(currentStep.characterId) || {
+        id: currentStep.characterId,
+        name: currentStep.characterName || 'Pensador',
+        era: 'Filosofía Clásica',
+        avatar: '',
+        gender: 'male',
+      }
+    );
   }, [currentStep]);
 
   // Mensajes de la etapa actual
@@ -723,12 +731,13 @@ REGLAS DE DIALÉCTICA:
         <div className="grid grid-cols-4 gap-2">
           {currentRoute.steps.map((st, idx) => {
             const char = getCharacterById(st.characterId);
+            const charName = char?.name || st.characterName || st.characterId;
             const isCompleted = activeRouteProgress?.completedSteps?.includes(idx);
             const isActive = activeStepIndex === idx;
 
             return (
               <button
-                key={st.stepNumber}
+                key={st.stepNumber || idx}
                 type="button"
                 onClick={() => {
                   stopAllAudio();
@@ -759,7 +768,7 @@ REGLAS DE DIALÉCTICA:
                     Paso {idx + 1}
                   </div>
                   <div className="text-xs font-bold text-zinc-100 truncate">
-                    {char?.name || st.characterId}
+                    {charName}
                   </div>
                 </div>
               </button>
@@ -770,26 +779,36 @@ REGLAS DE DIALÉCTICA:
 
       {/* 3. Card de Misión de la Etapa */}
       <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-3 sm:p-4 flex items-start gap-3.5 shrink-0 shadow-sm">
-        <div className="w-11 h-11 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
+        <div className="w-12 h-12 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
           {currentStepCharacter?.avatar ? (
             <img
               src={currentStepCharacter.avatar}
-              alt={currentStepCharacter.name}
+              alt={currentStepCharacter.name || currentStep.characterName}
               className="w-full h-full object-cover filter contrast-125 grayscale"
               onError={(e) => {
                 e.target.style.display = 'none';
+                if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
               }}
             />
-          ) : (
-            <span className="text-lg">🏛️</span>
-          )}
+          ) : null}
+          <span
+            className="text-xl"
+            style={{ display: currentStepCharacter?.avatar ? 'none' : 'flex' }}
+          >
+            🏛️
+          </span>
         </div>
 
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs sm:text-sm font-bold text-white">
-              {currentStepCharacter?.name}
-            </span>
+            <h3 className="text-sm sm:text-base font-bold text-white">
+              {currentStepCharacter?.name || currentStep.characterName}
+            </h3>
+            {currentStepCharacter?.era && (
+              <span className="text-[10px] font-mono text-zinc-400 bg-[#161b22] px-2 py-0.5 rounded-full border border-[#30363d]">
+                {currentStepCharacter.era}
+              </span>
+            )}
             <span className="text-[10px] font-mono font-bold text-[#58a6ff] bg-[#1f6feb]/20 px-2 py-0.5 rounded-full border border-[#1f6feb]/30">
               {currentStep.role}
             </span>
@@ -819,12 +838,20 @@ REGLAS DE DIALÉCTICA:
                   {currentStepCharacter?.avatar ? (
                     <img
                       src={currentStepCharacter.avatar}
-                      alt={currentStepCharacter.name}
+                      alt={currentStepCharacter.name || currentStep.characterName}
                       className="w-full h-full object-cover grayscale contrast-125"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                      }}
                     />
-                  ) : (
-                    <span>🏛️</span>
-                  )}
+                  ) : null}
+                  <span
+                    className="text-xs"
+                    style={{ display: currentStepCharacter?.avatar ? 'none' : 'flex' }}
+                  >
+                    🏛️
+                  </span>
                 </div>
               )}
 
@@ -840,7 +867,9 @@ REGLAS DE DIALÉCTICA:
                 }`}
               >
                 <div className="flex items-center justify-between gap-3 mb-1 text-[10px] text-zinc-400 font-mono select-none">
-                  <span>{isUser ? 'TÚ' : currentStepCharacter?.name?.toUpperCase()}</span>
+                  <span>
+                    {isUser ? 'TÚ' : (currentStepCharacter?.name || currentStep.characterName || 'FILÓSOFO').toUpperCase()}
+                  </span>
                   <span>{msg.timestamp || 'AHORA'}</span>
                 </div>
 
@@ -907,7 +936,7 @@ REGLAS DE DIALÉCTICA:
           <span>
             {isLastStep
               ? 'Has alcanzado la última estación de la forja.'
-              : `Siguiente estación: ${nextStepCharacter?.name || 'Siguiente filósofo'}.`}
+              : `Siguiente estación: ${nextStepCharacter?.name || currentRoute.steps[activeStepIndex + 1]?.characterName || 'Siguiente filósofo'}.`}
           </span>
         </div>
 
@@ -924,7 +953,7 @@ REGLAS DE DIALÉCTICA:
             </>
           ) : (
             <>
-              <span>Superar Etapa y Pasar a {nextStepCharacter?.name}</span>
+              <span>Superar Etapa y Pasar a {nextStepCharacter?.name || currentRoute.steps[activeStepIndex + 1]?.characterName || 'Siguiente filósofo'}</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}

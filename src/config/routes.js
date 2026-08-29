@@ -15,6 +15,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 1,
         characterId: 'socrates',
+        characterName: 'Sócrates',
         stageTitle: 'Etapa 1: Purga Mayéutica',
         role: 'Demolición de la Falsa Sabiduría',
         mission: 'Examina tus definiciones sobre la verdad y reconoce las contradicciones que das por sentadas antes de teorizar.',
@@ -24,6 +25,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 2,
         characterId: 'platon',
+        characterName: 'Platón',
         stageTitle: 'Etapa 2: Estructuración Inteligible',
         role: 'Ascenso de la Doxa a la Idea',
         mission: 'Supera los ejemplos sensibles particulares y busca la Forma inteligible única que hace que algo sea verdadero.',
@@ -32,7 +34,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 3,
-        characterId: 'kant',
+        characterId: 'immanuel_kant',
+        characterName: 'Immanuel Kant',
         stageTitle: 'Etapa 3: Límites Epistémicos',
         role: 'Crítica de la Razón Pura',
         mission: 'Distingue entre lo que podemos conocer con certeza objetiva (fenómeno) y lo que queda vedado a la razón pura (noúmeno).',
@@ -41,7 +44,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 4,
-        characterId: 'wittgenstein',
+        characterId: 'ludwig_wittgenstein',
+        characterName: 'Ludwig Wittgenstein',
         stageTitle: 'Etapa 4: Límites del Lenguaje',
         role: 'Terapia Lógica & Clarificación',
         mission: 'Comprueba si tus proposiciones describen hechos comprobables del mundo o si caen en sinsentidos metafísicos donde conviene guardar silencio.',
@@ -61,6 +65,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 1,
         characterId: 'socrates',
+        characterName: 'Sócrates',
         stageTitle: 'Etapa 1: Examen Moral',
         role: 'Cuestionamiento de las Leyes',
         mission: 'Separa la justicia real de las conveniencias impuestas por los gobernantes o las leyes de la mayoría.',
@@ -70,6 +75,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 2,
         characterId: 'aristoteles',
+        characterName: 'Aristóteles',
         stageTitle: 'Etapa 2: El Justo Medio & Equidad',
         role: 'Justicia Distributiva y Polis',
         mission: 'Define la justicia distributiva y la equidad (epieikeia) para armonizar el bien común y el florecimiento de la comunidad.',
@@ -78,7 +84,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 3,
-        characterId: 'foucault',
+        characterId: 'michel_foucault',
+        characterName: 'Michel Foucault',
         stageTitle: 'Etapa 3: Microfísica del Poder',
         role: 'Biopolítica y Normalización',
         mission: 'Desenmascara los dispositivos de control y las instituciones que deciden quién es "justo" y quién es "anormal".',
@@ -87,7 +94,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 4,
-        characterId: 'arendt',
+        characterId: 'hannah_arendt',
+        characterName: 'Hannah Arendt',
         stageTitle: 'Etapa 4: Juicio y Pluralidad',
         role: 'Acción y Responsabilidad Política',
         mission: 'Forja un criterio ético-político fundado en la pluralidad humana, el pensamiento sin barandillas y la resistencia al mal banal.',
@@ -106,7 +114,8 @@ export const PREDEFINED_ROUTES = [
     steps: [
       {
         stepNumber: 1,
-        characterId: 'hume',
+        characterId: 'david_hume',
+        characterName: 'David Hume',
         stageTitle: 'Etapa 1: La Esclavitud de la Razón',
         role: 'Crítica Empirista del Libre Albedrío',
         mission: 'Examina si tus elecciones nacen de un libre albedrío puro o si la razón es solo esclava de tus pasiones e inclinaciones psicológicas.',
@@ -115,7 +124,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 2,
-        characterId: 'spinoza',
+        characterId: 'baruch_spinoza',
+        characterName: 'Baruch Spinoza',
         stageTitle: 'Etapa 2: Necesidad y Beatitud',
         role: 'Libertad Geométrica',
         mission: 'Descubre cómo la verdadera libertad no es el capricho arbitrario, sino la comprensión racional de las causas necesarias que te determinan.',
@@ -124,7 +134,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 3,
-        characterId: 'sartre',
+        characterId: 'jean_paul_sartre',
+        characterName: 'Jean-Paul Sartre',
         stageTitle: 'Etapa 3: La Condena a Ser Libres',
         role: 'Angustia y Mala Fe',
         mission: 'Asume la angustia de la elección absoluta y desenmascara cualquier excusa determinista como un acto de mala fe.',
@@ -133,7 +144,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 4,
-        characterId: 'beauvoir',
+        characterId: 'simone_de_beauvoir',
+        characterName: 'Simone de Beauvoir',
         stageTitle: 'Etapa 4: Libertad Situada',
         role: 'Trascendencia y Ética de la Ambigüedad',
         mission: 'Proyecta tu libertad en el mundo real reconociendo tu cuerpo, tu contexto material y la necesidad de emancipar la libertad ajena.',
@@ -152,7 +164,8 @@ export const PREDEFINED_ROUTES = [
     steps: [
       {
         stepNumber: 1,
-        characterId: 'schopenhauer',
+        characterId: 'arthur_schopenhauer',
+        characterName: 'Arthur Schopenhauer',
         stageTitle: 'Etapa 1: La Raíz del Sufrimiento',
         role: 'Pesimismo Metafísico',
         mission: 'Comprende cómo el dolor nace del deseo insaciable de la Voluntad ciega y el péndulo entre el anhelo y el tedio.',
@@ -162,6 +175,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 2,
         characterId: 'nietzsche',
+        characterName: 'Friedrich Nietzsche',
         stageTitle: 'Etapa 2: El Fuego de la Transvaloración',
         role: 'Amor Fati y Voluntad de Poder',
         mission: 'Deja de compadecerte y utiliza el dolor como el cincel supremo para forjar tu propia grandeza y afirmar la vida.',
@@ -170,7 +184,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 3,
-        characterId: 'camus',
+        characterId: 'albert_camus',
+        characterName: 'Albert Camus',
         stageTitle: 'Etapa 3: La Rebelión Lúcida',
         role: 'El Héroe del Absurdo',
         mission: 'Enfrenta el absurdo de la existencia sin consuelos celestiales ni suicidios filosóficos, viviendo con pasión rebelde.',
@@ -179,7 +194,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 4,
-        characterId: 'marco_aurelio',
+        characterId: 'marcus_aurelius',
+        characterName: 'Marco Aurelio',
         stageTitle: 'Etapa 4: La Ciudadela Interior',
         role: 'Dominio Soberano de los Juicios',
         mission: 'Aprende que lo que te hiere no son las cosas externas, sino el juicio que formas sobre ellas dentro de tu propia mente.',
@@ -199,6 +215,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 1,
         characterId: 'philippa_foot',
+        characterName: 'Philippa Foot',
         stageTitle: 'Etapa 1: Hechos y Bondad Natural',
         role: 'Gramática de los Dilemas Éticos',
         mission: 'Demuestra que los juicios morales no son meros gustos subjetivos, sino condiciones objetivas para el florecimiento de la especie humana.',
@@ -207,7 +224,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 2,
-        characterId: 'spinoza',
+        characterId: 'baruch_spinoza',
+        characterName: 'Baruch Spinoza',
         stageTitle: 'Etapa 2: Afectos y Conatus',
         role: 'Ética Inmanente',
         mission: 'Distingue entre el bien real (lo que aumenta tu potencia de actuar) y las pasiones tristes que disminuyen tu fuerza vital.',
@@ -216,7 +234,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 3,
-        characterId: 'kant',
+        characterId: 'immanuel_kant',
+        characterName: 'Immanuel Kant',
         stageTitle: 'Etapa 3: El Imperativo Categórico',
         role: 'Deber y Autonomía',
         mission: 'Sométete a la prueba de la universalidad: ¿podrías desear que la máxima de tu acción se convierta en una ley universal sin contradicción?',
@@ -226,6 +245,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 4,
         characterId: 'nietzsche',
+        characterName: 'Friedrich Nietzsche',
         stageTitle: 'Etapa 4: Más Allá del Bien y del Mal',
         role: 'Genealogía y Voluntad Creadora',
         mission: 'Desenmascara el resentimiento que engendra la moral gregaria y atrévete a legislar tus propios valores afirmativos.',
@@ -244,7 +264,8 @@ export const PREDEFINED_ROUTES = [
     steps: [
       {
         stepNumber: 1,
-        characterId: 'marco_aurelio',
+        characterId: 'marcus_aurelius',
+        characterName: 'Marco Aurelio',
         stageTitle: 'Etapa 1: La Brevedad del Ahora',
         role: 'Conciencia del Instante Presente',
         mission: 'Recuerda que solo posees el momento presente y que perder el pasado o el futuro es una ilusión vana.',
@@ -253,7 +274,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 2,
-        characterId: 'kant',
+        characterId: 'immanuel_kant',
+        characterName: 'Immanuel Kant',
         stageTitle: 'Etapa 2: El Tiempo como Intuición Pura',
         role: 'Forma a Priori de la Sensibilidad',
         mission: 'Descubre que el tiempo no es un objeto que corre afuera, sino la forma interna mediante la cual tu propia mente ordena las experiencias.',
@@ -263,6 +285,7 @@ export const PREDEFINED_ROUTES = [
       {
         stepNumber: 3,
         characterId: 'byung_chul_han',
+        characterName: 'Byung-Chul Han',
         stageTitle: 'Etapa 3: La Pérdida del Aroma del Tiempo',
         role: 'Crítica de la Aceleración y el Rendimiento',
         mission: 'Analiza cómo la autoexplotación y la fragmentación digital han destruido la capacidad de demora contemplativa.',
@@ -271,7 +294,8 @@ export const PREDEFINED_ROUTES = [
       },
       {
         stepNumber: 4,
-        characterId: 'camus',
+        characterId: 'albert_camus',
+        characterName: 'Albert Camus',
         stageTitle: 'Etapa 4: La Intensidad del Instante Finito',
         role: 'Plenitud sin Trascendencia',
         mission: 'Asume la certeza de tu propia mortalidad no con resignación triste, sino como el combustible para amar la vida con una intensidad insaciable.',
@@ -302,6 +326,7 @@ export const createCustomRoute = (conceptName) => {
       {
         stepNumber: 1,
         characterId: 'socrates',
+        characterName: 'Sócrates',
         stageTitle: 'Etapa 1: Purga Mayéutica',
         role: 'Demolición de Prejuicios',
         mission: `Examina qué entiendes ingenuamente por "${cleanConcept}" y deconstruye las contradicciones de tu definición inicial.`,
@@ -311,6 +336,7 @@ export const createCustomRoute = (conceptName) => {
       {
         stepNumber: 2,
         characterId: 'platon',
+        characterName: 'Platón',
         stageTitle: 'Etapa 2: Estructura Inteligible',
         role: 'Esencia y Forma Universal',
         mission: `Busca la esencia universal de "${cleanConcept}" más allá de los ejemplos sensibles particulares o modas pasajeras.`,
@@ -319,7 +345,8 @@ export const createCustomRoute = (conceptName) => {
       },
       {
         stepNumber: 3,
-        characterId: 'kant',
+        characterId: 'immanuel_kant',
+        characterName: 'Immanuel Kant',
         stageTitle: 'Etapa 3: Límites Epistémicos',
         role: 'Condiciones de Posibilidad',
         mission: `Determina las condiciones racionales objetivas y los límites de aplicación de "${cleanConcept}".`,
@@ -328,7 +355,8 @@ export const createCustomRoute = (conceptName) => {
       },
       {
         stepNumber: 4,
-        characterId: 'sartre',
+        characterId: 'jean_paul_sartre',
+        characterName: 'Jean-Paul Sartre',
         stageTitle: 'Etapa 4: Aterrizaje Existencial',
         role: 'Elección y Compromiso Vital',
         mission: `Asume la responsabilidad de encarnar "${cleanConcept}" en tus decisiones concretas sin refugiarte en la mala fe.`,

@@ -1367,20 +1367,47 @@ REGLAS DE CONDUCTA Y DIALÉCTICA:
   },
 ];
 
+const ID_ALIASES = {
+  kant: 'immanuel_kant',
+  wittgenstein: 'ludwig_wittgenstein',
+  foucault: 'michel_foucault',
+  sartre: 'jean_paul_sartre',
+  arendt: 'hannah_arendt',
+  beauvoir: 'simone_de_beauvoir',
+  schopenhauer: 'arthur_schopenhauer',
+  spinoza: 'baruch_spinoza',
+  camus: 'albert_camus',
+  hume: 'david_hume',
+  marco_aurelio: 'marcus_aurelius',
+  'marco-aurelio': 'marcus_aurelius',
+  jung: 'carl_jung',
+  weil: 'simone_weil',
+  foot: 'philippa_foot',
+  nussbaum: 'martha_nussbaum',
+};
+
 // Alias para compatibilidad
 export const PHILOSOPHERS = characters;
 export const philosophers = characters;
 
 export const getCharacterById = (id) => {
+  if (!id) return characters[0] || null;
+  const canonicalId = ID_ALIASES[id] || id;
+
   let char = null;
   if (Array.isArray(characters) && characters.length > 0) {
-    char = characters.find((c) => c && c.id === id) || characters[0];
+    char = characters.find((c) => c && (c.id === canonicalId || c.id === id));
   } else if (characters && typeof characters === 'object') {
     const list = Array.isArray(characters.filosofos)
       ? characters.filosofos
       : Object.values(characters).flat();
-    char = list.find((c) => c && c.id === id) || list[0];
+    char = list.find((c) => c && (c.id === canonicalId || c.id === id));
   }
+
+  if (!char) {
+    char = characters[0];
+  }
+
   if (char && !char.neuralVoice) {
     char.neuralVoice = char.gender === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
   }
