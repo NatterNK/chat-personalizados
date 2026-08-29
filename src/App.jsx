@@ -34,7 +34,12 @@ import {
   isSpeechRecognitionSupported,
   speakPhilosopherText,
   cancelSpeech,
+  getSavedVoicePref,
 } from './services/speech';
+import {
+  playNeuralVoice,
+  stopNeuralAudio,
+} from './services/neuralAudio';
 import { sendMessage, getApiKey } from './services/gemini';
 
 function App() {
@@ -90,6 +95,7 @@ function App() {
         localStorage.setItem('app_auto_speak_enabled', String(next));
       } catch (e) {}
       if (!next) {
+        stopNeuralAudio();
         cancelSpeech();
         setSpeakingMessageId(null);
         setAppState((curr) => (curr === 'speaking' ? 'idle' : curr));
@@ -217,6 +223,7 @@ function App() {
    * Reinicia la sesión del personaje activo y limpia su localStorage
    */
   const handleResetSession = () => {
+    stopNeuralAudio();
     cancelSpeech();
     if (recognizerRef.current) {
       recognizerRef.current.abort();
@@ -247,34 +254,61 @@ function App() {
   };
 
   /**
-   * Sintetiza la voz del personaje activo aplicando el filtro inteligente de género, tono (pitch) y cadencia (rate)
+   * Sintetiza la voz del personaje activo mediante Voz Neuronal Humana (Azure / Edge TTS) con fallback nativo
    */
   const speakMessage = useCallback(
     (text, messageId = null) => {
       const currentChar = activeCharacterRef.current;
+      stopNeuralAudio();
       cancelSpeech();
       setAppState('speaking');
       if (messageId) setSpeakingMessageId(messageId);
 
-      speakPhilosopherText(text, {
-        philosopher: currentChar,
-        character: currentChar,
-        rate: currentChar?.rate ?? currentChar?.voiceSettings?.rate ?? 1.0,
-        pitch: currentChar?.pitch ?? currentChar?.voiceSettings?.pitch ?? 1.0,
-        lang: selectedLang,
-        onStart: () => {
-          setAppState('speaking');
-          if (messageId) setSpeakingMessageId(messageId);
-        },
-        onEnd: () => {
-          setAppState('idle');
-          setSpeakingMessageId(null);
-        },
-        onError: () => {
-          setAppState('idle');
-          setSpeakingMessageId(null);
-        },
-      });
+      const savedPref = currentChar?.id ? getSavedVoicePref(currentChar.id) : null;
+      const isBrowserMode = savedPref?.engineMode === 'browser';
+
+      if (isBrowserMode) {
+        speakPhilosopherText(text, {
+          philosopher: currentChar,
+          character: currentChar,
+          rate: savedPref?.rate ?? currentChar?.rate ?? 1.0,
+          pitch: savedPref?.pitch ?? currentChar?.pitch ?? 1.0,
+          volume: savedPref?.volume ?? 1.0,
+          lang: selectedLang,
+          customVoiceURI: savedPref?.voiceURI,
+          onStart: () => {
+            setAppState('speaking');
+            if (messageId) setSpeakingMessageId(messageId);
+          },
+          onEnd: () => {
+            setAppState('idle');
+            setSpeakingMessageId(null);
+          },
+          onError: () => {
+            setAppState('idle');
+            setSpeakingMessageId(null);
+          },
+        });
+      } else {
+        playNeuralVoice(text, {
+          character: currentChar,
+          voice: savedPref?.neuralVoice || currentChar?.neuralVoice,
+          rate: savedPref?.rate ?? currentChar?.rate ?? 1.0,
+          pitch: savedPref?.pitch ?? currentChar?.pitch ?? 1.0,
+          onStart: () => {
+            setAppState('speaking');
+            if (messageId) setSpeakingMessageId(messageId);
+          },
+          onEnd: () => {
+            setAppState('idle');
+            setSpeakingMessageId(null);
+          },
+          onError: () => {
+            setAppState('idle');
+            setSpeakingMessageId(null);
+          },
+        });
+      }
     },
     [selectedLang]
   );
@@ -291,6 +325,7 @@ function App() {
       const currentMessages = messagesRef.current;
 
       // Interrumpir cualquier audio en curso
+      stopNeuralAudio();
       cancelSpeech();
       if (recognizerRef.current && appState === 'listening') {
         recognizerRef.current.abort();
@@ -400,6 +435,7 @@ function App() {
 
     return () => {
       recognizer.abort();
+      stopNeuralAudio();
       cancelSpeech();
     };
   }, [selectedLang]);
@@ -411,6 +447,7 @@ function App() {
       recognizerRef.current.stop();
       setAppState('idle');
     } else {
+      stopNeuralAudio();
       cancelSpeech();
       setAppState('listening');
       recognizerRef.current.start();
@@ -419,6 +456,7 @@ function App() {
 
   const handleReplayAudio = (msg) => {
     if (speakingMessageId === msg.id && appState === 'speaking') {
+      stopNeuralAudio();
       cancelSpeech();
       setAppState('idle');
       setSpeakingMessageId(null);

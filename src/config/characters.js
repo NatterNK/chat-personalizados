@@ -1372,30 +1372,45 @@ export const PHILOSOPHERS = characters;
 export const philosophers = characters;
 
 export const getCharacterById = (id) => {
+  let char = null;
   if (Array.isArray(characters) && characters.length > 0) {
-    return characters.find((c) => c && c.id === id) || characters[0] || null;
-  }
-  if (characters && typeof characters === 'object') {
+    char = characters.find((c) => c && c.id === id) || characters[0];
+  } else if (characters && typeof characters === 'object') {
     const list = Array.isArray(characters.filosofos)
       ? characters.filosofos
       : Object.values(characters).flat();
-    return list.find((c) => c && c.id === id) || list[0] || null;
+    char = list.find((c) => c && c.id === id) || list[0];
   }
-  return null;
+  if (char && !char.neuralVoice) {
+    char.neuralVoice = char.gender === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
+  }
+  return char || null;
 };
 
 export const getPhilosopherById = getCharacterById;
 
 export const getCharactersByCategory = (categoryId) => {
+  let list = [];
   if (!Array.isArray(characters)) {
     if (characters && typeof characters === 'object') {
       if (categoryId && Array.isArray(characters[categoryId])) {
-        return characters[categoryId];
+        list = characters[categoryId];
+      } else {
+        list = Object.values(characters).flat();
       }
-      return Object.values(characters).flat();
     }
-    return [];
+  } else {
+    if (!categoryId) list = characters;
+    else list = characters.filter((c) => c && c.category === categoryId);
   }
-  if (!categoryId) return characters;
-  return characters.filter((c) => c && c.category === categoryId);
+
+  return list.map((c) => {
+    if (c && !c.neuralVoice) {
+      return {
+        ...c,
+        neuralVoice: c.gender === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural',
+      };
+    }
+    return c;
+  });
 };

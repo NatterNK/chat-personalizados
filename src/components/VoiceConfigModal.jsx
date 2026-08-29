@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Sliders, Volume2, X, RotateCcw, Check, Play, Square, Zap, Landmark, Compass, Users } from 'lucide-react';
+import {
+  Sliders,
+  Volume2,
+  X,
+  RotateCcw,
+  Check,
+  Play,
+  Square,
+  Zap,
+  Landmark,
+  Compass,
+  Users,
+  Sparkles,
+  Radio,
+  Cpu,
+} from 'lucide-react';
 import {
   getSpanishVoices,
   getBestVoice,
@@ -10,6 +25,14 @@ import {
   speakPhilosopherText,
   cancelSpeech,
 } from '../services/speech';
+import {
+  NEURAL_VOICES_CATALOG,
+  playNeuralVoice,
+  stopNeuralAudio,
+  getBestNeuralVoiceForCharacter,
+  formatRatePercent,
+  formatPitchPercent,
+} from '../services/neuralAudio';
 import { characters } from '../config/characters';
 
 const FEMALE_KEYWORDS = [
@@ -23,12 +46,16 @@ const MALE_KEYWORDS = [
 ];
 
 export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
-  const [allVoices, setAllVoices] = useState([]);
-  const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
+  const [engineMode, setEngineMode] = useState('neural'); // 'neural' | 'browser'
+  const [selectedNeuralVoice, setSelectedNeuralVoice] = useState('es-ES-AlvaroNeural');
+  const [allBrowserVoices, setAllBrowserVoices] = useState([]);
+  const [selectedBrowserVoiceURI, setSelectedBrowserVoiceURI] = useState('');
+  
   const [rate, setRate] = useState(1.0);
   const [pitch, setPitch] = useState(1.0);
   const [volume, setVolume] = useState(1.0);
   const [genderTab, setGenderTab] = useState('male'); // 'male' | 'female'
+  
   const [isPlayingTest, setIsPlayingTest] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [bulkSavedSuccess, setBulkSavedSuccess] = useState(false);
@@ -41,19 +68,24 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
 
     const loadVoices = () => {
       const available = getSpanishVoices();
-      setAllVoices(available);
+      setAllBrowserVoices(available);
 
       const savedPref = getSavedVoicePref(character?.id);
-      const bestDefault = getBestVoice(character);
+      const defaultNeural = getBestNeuralVoiceForCharacter(character);
+      const bestBrowser = getBestVoice(character);
 
       if (savedPref) {
-        setSelectedVoiceURI(savedPref.voiceURI || bestDefault?.voiceURI || available[0]?.voiceURI || '');
+        setEngineMode(savedPref.engineMode || 'neural');
+        setSelectedNeuralVoice(savedPref.neuralVoice || defaultNeural);
+        setSelectedBrowserVoiceURI(savedPref.voiceURI || bestBrowser?.voiceURI || available[0]?.voiceURI || '');
         setRate(savedPref.rate ?? character?.rate ?? 1.0);
         setPitch(savedPref.pitch ?? character?.pitch ?? 1.0);
         setVolume(savedPref.volume ?? 1.0);
         if (savedPref.genderTab) setGenderTab(savedPref.genderTab);
       } else {
-        setSelectedVoiceURI(bestDefault?.voiceURI || available[0]?.voiceURI || '');
+        setEngineMode('neural');
+        setSelectedNeuralVoice(defaultNeural);
+        setSelectedBrowserVoiceURI(bestBrowser?.voiceURI || available[0]?.voiceURI || '');
         setRate(character?.rate ?? 1.0);
         setPitch(character?.pitch ?? 1.0);
         setVolume(1.0);
@@ -76,6 +108,7 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
+        stopNeuralAudio();
         cancelSpeech();
         onClose();
       }
@@ -84,10 +117,15 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Filtrar voces por género de la pestaña activa y ordenar por calidad
-  const filteredVoices = useMemo(() => {
-    const spanish = allVoices.filter((v) => v.lang.toLowerCase().startsWith('es'));
-    const pool = spanish.length > 0 ? spanish : allVoices;
+  // Voces neuronales filtradas por pestaña de género
+  const filteredNeuralVoices = useMemo(() => {
+    return NEURAL_VOICES_CATALOG.filter((v) => v.gender === genderTab);
+  }, [genderTab]);
+
+  // Voces de navegador filtradas por género
+  const filteredBrowserVoices = useMemo(() => {
+    const spanish = allBrowserVoices.filter((v) => v.lang.toLowerCase().startsWith('es'));
+    const pool = spanish.length > 0 ? spanish : allBrowserVoices;
 
     const isFemale = (name) => {
       const n = name.toLowerCase();
@@ -101,7 +139,13 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
 
     const isNeuralOrNatural = (name) => {
       const n = name.toLowerCase();
-      return n.includes('natural') || n.includes('neural') || n.includes('google') || n.includes('microsoft') || n.includes('online');
+      return (
+        n.includes('natural') ||
+        n.includes('neural') ||
+        n.includes('google') ||
+        n.includes('microsoft') ||
+        n.includes('online')
+      );
     };
 
     const byGender = pool.filter((v) => {
@@ -113,13 +157,12 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
 
     const candidateList = byGender.length > 0 ? byGender : pool;
 
-    // Ordenar priorizando voces Neurales / Naturales
     return [...candidateList].sort((a, b) => {
       const aScore = isNeuralOrNatural(a.name) ? 2 : 1;
       const bScore = isNeuralOrNatural(b.name) ? 2 : 1;
       return bScore - aScore;
     });
-  }, [allVoices, genderTab]);
+  }, [allBrowserVoices, genderTab]);
 
   if (!isOpen || !character) return null;
 
@@ -140,8 +183,9 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
     }
   };
 
-  const handleTestVoice = () => {
+  const handleTestVoice = async () => {
     if (isPlayingTest) {
+      stopNeuralAudio();
       cancelSpeech();
       setIsPlayingTest(false);
       return;
@@ -150,23 +194,40 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
     setIsPlayingTest(true);
     const testPhrase = `Soy ${character.name}. Esta es la modulación acústica y cadencia configurada para nuestro examen dialéctico.`;
 
-    speakPhilosopherText(testPhrase, {
-      character,
-      rate,
-      pitch,
-      volume,
-      customVoiceURI: selectedVoiceURI,
-      onStart: () => setIsPlayingTest(true),
-      onEnd: () => setIsPlayingTest(false),
-      onError: () => setIsPlayingTest(false),
-    });
+    if (engineMode === 'neural') {
+      await playNeuralVoice(testPhrase, {
+        character,
+        voice: selectedNeuralVoice,
+        rate,
+        pitch,
+        onStart: () => setIsPlayingTest(true),
+        onEnd: () => setIsPlayingTest(false),
+        onError: () => setIsPlayingTest(false),
+      });
+    } else {
+      speakPhilosopherText(testPhrase, {
+        character,
+        rate,
+        pitch,
+        volume,
+        customVoiceURI: selectedBrowserVoiceURI,
+        onStart: () => setIsPlayingTest(true),
+        onEnd: () => setIsPlayingTest(false),
+        onError: () => setIsPlayingTest(false),
+      });
+    }
   };
 
   const handleSave = () => {
-    const chosenVoice = allVoices.find((v) => v.voiceURI === selectedVoiceURI);
+    const chosenBrowserVoice = allBrowserVoices.find((v) => v.voiceURI === selectedBrowserVoiceURI);
+    const chosenNeural = NEURAL_VOICES_CATALOG.find((v) => v.id === selectedNeuralVoice);
+
     saveVoicePref(character.id, {
-      voiceURI: selectedVoiceURI,
-      voiceName: chosenVoice?.name || '',
+      engineMode,
+      neuralVoice: selectedNeuralVoice,
+      neuralVoiceName: chosenNeural?.name || '',
+      voiceURI: selectedBrowserVoiceURI,
+      voiceName: chosenBrowserVoice?.name || '',
       rate,
       pitch,
       volume,
@@ -180,10 +241,15 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
   };
 
   const handleApplyToAllOfGender = () => {
-    const chosenVoice = allVoices.find((v) => v.voiceURI === selectedVoiceURI);
+    const chosenBrowserVoice = allBrowserVoices.find((v) => v.voiceURI === selectedBrowserVoiceURI);
+    const chosenNeural = NEURAL_VOICES_CATALOG.find((v) => v.id === selectedNeuralVoice);
+
     const pref = {
-      voiceURI: selectedVoiceURI,
-      voiceName: chosenVoice?.name || '',
+      engineMode,
+      neuralVoice: selectedNeuralVoice,
+      neuralVoiceName: chosenNeural?.name || '',
+      voiceURI: selectedBrowserVoiceURI,
+      voiceName: chosenBrowserVoice?.name || '',
       rate,
       pitch,
       volume,
@@ -198,8 +264,12 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
 
   const handleReset = () => {
     clearVoicePref(character.id);
-    const bestDefault = getBestVoice(character);
-    setSelectedVoiceURI(bestDefault?.voiceURI || allVoices[0]?.voiceURI || '');
+    const defaultNeural = getBestNeuralVoiceForCharacter(character);
+    const bestBrowser = getBestVoice(character);
+
+    setEngineMode('neural');
+    setSelectedNeuralVoice(defaultNeural);
+    setSelectedBrowserVoiceURI(bestBrowser?.voiceURI || allBrowserVoices[0]?.voiceURI || '');
     setRate(character.rate ?? 1.0);
     setPitch(character.pitch ?? 1.0);
     setVolume(1.0);
@@ -232,19 +302,20 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Panel de Modulación Acústica</h3>
+                <h3 className="text-base font-bold text-white">Voz Neuronal & Modulación</h3>
                 <span className="text-[10px] font-mono font-bold bg-[#1f6feb]/20 text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#1f6feb]/40">
                   {character.name}
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Ajusta el timbre, velocidad, tono y presets de síntesis TTS
+                Voces humanas de estudio (Azure / Edge TTS) con fallback nativo
               </p>
             </div>
           </div>
 
           <button
             onClick={() => {
+              stopNeuralAudio();
               cancelSpeech();
               onClose();
             }}
@@ -256,7 +327,42 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
         </div>
 
         {/* Contenido con Scroll */}
-        <div className="p-4 sm:p-5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-4 sm:p-5 space-y-4 sm:space-y-5 overflow-y-auto custom-scrollbar flex-1">
+          {/* Selector de Motor: Neuronal de Estudio vs Navegador */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-[#58a6ff]" />
+                MOTOR DE SÍNTESIS DE VOZ:
+              </span>
+            </label>
+            <div className="grid grid-cols-2 gap-2 bg-[#12161f] p-1 rounded-xl border border-[#21262d]">
+              <button
+                type="button"
+                onClick={() => setEngineMode('neural')}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  engineMode === 'neural'
+                    ? 'bg-gradient-to-r from-[#1f6feb] to-[#388bfd] text-white shadow-md'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22]'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>🎙️ Neuronal de Estudio</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEngineMode('browser')}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  engineMode === 'browser'
+                    ? 'bg-[#1f6feb] text-white shadow-md'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22]'
+                }`}
+              >
+                <span>🔊 Local (Navegador)</span>
+              </button>
+            </div>
+          </div>
+
           {/* Pestañas de Género */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center gap-1.5">
@@ -267,8 +373,10 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                 type="button"
                 onClick={() => {
                   setGenderTab('male');
-                  const firstMale = allVoices.find((v) => MALE_KEYWORDS.some((kw) => v.name.toLowerCase().includes(kw)));
-                  if (firstMale) setSelectedVoiceURI(firstMale.voiceURI);
+                  if (engineMode === 'neural') {
+                    const firstMale = NEURAL_VOICES_CATALOG.find((v) => v.gender === 'male');
+                    if (firstMale) setSelectedNeuralVoice(firstMale.id);
+                  }
                 }}
                 className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   genderTab === 'male'
@@ -282,8 +390,10 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                 type="button"
                 onClick={() => {
                   setGenderTab('female');
-                  const firstFemale = allVoices.find((v) => FEMALE_KEYWORDS.some((kw) => v.name.toLowerCase().includes(kw)));
-                  if (firstFemale) setSelectedVoiceURI(firstFemale.voiceURI);
+                  if (engineMode === 'neural') {
+                    const firstFemale = NEURAL_VOICES_CATALOG.find((v) => v.gender === 'female');
+                    if (firstFemale) setSelectedNeuralVoice(firstFemale.id);
+                  }
                 }}
                 className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   genderTab === 'female'
@@ -296,30 +406,69 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
             </div>
           </div>
 
-          {/* Selector de Voz */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center justify-between">
-              <span>🎙️ TIMBRE Y SINTETIZADOR DISPONIBLE:</span>
-              <span className="text-[10px] text-zinc-500 font-normal">
-                {filteredVoices.length} voces detectadas
-              </span>
-            </label>
+          {/* Selector de Voz Neuronal vs Navegador */}
+          {engineMode === 'neural' ? (
+            <div className="space-y-2">
+              <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center justify-between">
+                <span>🌟 VOCES NEURONALES AZURE / EDGE DISPONIBLES:</span>
+                <span className="text-[10px] text-[#58a6ff] font-mono">24kHz MP3 HD</span>
+              </label>
 
-            <select
-              value={selectedVoiceURI}
-              onChange={(e) => setSelectedVoiceURI(e.target.value)}
-              className="w-full bg-[#161b22] border border-[#30363d] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-100 focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]/40 transition-all font-sans cursor-pointer"
-            >
-              {filteredVoices.map((v) => {
-                const isNeural = v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('neural') || v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('microsoft');
-                return (
+              <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1">
+                {filteredNeuralVoices.map((v) => {
+                  const isSelected = selectedNeuralVoice === v.id;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setSelectedNeuralVoice(v.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                        isSelected
+                          ? 'bg-[#10243e] border-[#1f6feb] text-white shadow-md ring-1 ring-[#1f6feb]/50'
+                          : 'bg-[#12161f] border-[#21262d] text-zinc-300 hover:bg-[#161b22] hover:border-[#30363d]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1.5">
+                          <span>{v.flag}</span>
+                          <span>{v.name}</span>
+                        </span>
+                        {isSelected && (
+                          <span className="text-[10px] font-mono text-[#58a6ff] font-bold bg-[#1f6feb]/20 px-2 py-0.5 rounded-full border border-[#1f6feb]/40">
+                            SELECCIONADA
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-400 font-sans leading-snug">
+                        {v.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center justify-between">
+                <span>🎙️ VOCES LOCALES DEL NAVEGADOR:</span>
+                <span className="text-[10px] text-zinc-500 font-normal">
+                  {filteredBrowserVoices.length} detectadas
+                </span>
+              </label>
+
+              <select
+                value={selectedBrowserVoiceURI}
+                onChange={(e) => setSelectedBrowserVoiceURI(e.target.value)}
+                className="w-full bg-[#161b22] border border-[#30363d] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-100 focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]/40 transition-all font-sans cursor-pointer"
+              >
+                {filteredBrowserVoices.map((v) => (
                   <option key={v.voiceURI} value={v.voiceURI} className="bg-[#161b22] text-zinc-100">
-                    {isNeural ? '⚡ ' : ''}{v.name} ({v.lang})
+                    {v.name} ({v.lang})
                   </option>
-                );
-              })}
-            </select>
-          </div>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Presets Acústicos Rápidos */}
           <div className="space-y-1.5">
@@ -332,36 +481,42 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                 type="button"
                 onClick={() => handleApplyPreset('agil')}
                 className="p-2.5 rounded-xl bg-[#161b22] hover:bg-[#1f6feb]/20 border border-[#30363d] hover:border-[#1f6feb]/50 text-left transition-all group cursor-pointer"
-                title="Cadencia rápida y ágil (1.14x)"
+                title="Cadencia rápida y ágil (+14%)"
               >
                 <div className="text-xs font-bold text-zinc-200 group-hover:text-[#58a6ff] flex items-center gap-1">
-                  <span>⚡ Fluido & Ágil</span>
+                  <span>⚡ Fluido</span>
                 </div>
-                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">1.14x / Tono 1.0</div>
+                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
+                  {formatRatePercent(1.14)} / {formatPitchPercent(1.0)}
+                </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleApplyPreset('solemne')}
                 className="p-2.5 rounded-xl bg-[#161b22] hover:bg-[#1f6feb]/20 border border-[#30363d] hover:border-[#1f6feb]/50 text-left transition-all group cursor-pointer"
-                title="Cadencia pausada y reflexiva (0.88x, tono 0.94)"
+                title="Cadencia pausada y reflexiva (-12%)"
               >
                 <div className="text-xs font-bold text-zinc-200 group-hover:text-[#58a6ff] flex items-center gap-1">
                   <span>🏛️ Solemne</span>
                 </div>
-                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">0.88x / Tono 0.94</div>
+                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
+                  {formatRatePercent(0.88)} / {formatPitchPercent(0.94)}
+                </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleApplyPreset('neutro')}
                 className="p-2.5 rounded-xl bg-[#161b22] hover:bg-[#1f6feb]/20 border border-[#30363d] hover:border-[#1f6feb]/50 text-left transition-all group cursor-pointer"
-                title="Cadencia estándar equilibrada (1.00x)"
+                title="Cadencia estándar equilibrada (0%)"
               >
                 <div className="text-xs font-bold text-zinc-200 group-hover:text-[#58a6ff] flex items-center gap-1">
                   <span>🎯 Neutro</span>
                 </div>
-                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">1.00x / Tono 1.0</div>
+                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
+                  {formatRatePercent(1.0)} / {formatPitchPercent(1.0)}
+                </div>
               </button>
             </div>
           </div>
@@ -376,7 +531,7 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                   Velocidad / Cadencia (Rate):
                 </span>
                 <span className="font-mono text-xs text-[#58a6ff] font-bold bg-[#161b22] px-2 py-0.5 rounded border border-[#30363d]">
-                  {Number(rate).toFixed(2)}x
+                  {Number(rate).toFixed(2)}x ({formatRatePercent(rate)})
                 </span>
               </div>
               <input
@@ -389,9 +544,9 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                 className="w-full h-1.5 bg-[#21262d] rounded-lg appearance-none cursor-pointer accent-[#1f6feb]"
               />
               <div className="flex justify-between text-[10px] font-mono text-zinc-500 px-0.5">
-                <span>0.60x (Lento)</span>
-                <span>1.00x (Normal)</span>
-                <span>1.60x (Rápido)</span>
+                <span>0.60x (-40%)</span>
+                <span>1.00x (0%)</span>
+                <span>1.60x (+60%)</span>
               </div>
             </div>
 
@@ -403,7 +558,7 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                   Tono / Timbre (Pitch):
                 </span>
                 <span className="font-mono text-xs text-purple-400 font-bold bg-[#161b22] px-2 py-0.5 rounded border border-[#30363d]">
-                  {Number(pitch).toFixed(2)}
+                  {Number(pitch).toFixed(2)} ({formatPitchPercent(pitch)})
                 </span>
               </div>
               <input
@@ -416,36 +571,9 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
                 className="w-full h-1.5 bg-[#21262d] rounded-lg appearance-none cursor-pointer accent-purple-500"
               />
               <div className="flex justify-between text-[10px] font-mono text-zinc-500 px-0.5">
-                <span>0.60 (Grave)</span>
-                <span>1.00 (Natural)</span>
-                <span>1.40 (Agudo)</span>
-              </div>
-            </div>
-
-            {/* Slider: Volumen / Presencia (0.1 - 1.0) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-300 font-medium flex items-center gap-1.5">
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                  Volumen / Presencia:
-                </span>
-                <span className="font-mono text-xs text-emerald-400 font-bold bg-[#161b22] px-2 py-0.5 rounded border border-[#30363d]">
-                  {Math.round(volume * 100)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.05"
-                value={volume}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-[#21262d] rounded-lg appearance-none cursor-pointer accent-emerald-500"
-              />
-              <div className="flex justify-between text-[10px] font-mono text-zinc-500 px-0.5">
-                <span>10%</span>
-                <span>50%</span>
-                <span>100%</span>
+                <span>0.60 (-40Hz)</span>
+                <span>1.00 (+0Hz)</span>
+                <span>1.40 (+40Hz)</span>
               </div>
             </div>
           </div>
@@ -469,7 +597,9 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
               ) : (
                 <>
                   <Play className="w-4 h-4 text-[#58a6ff] fill-current" />
-                  <span>🔊 Probar Modulación Acústica</span>
+                  <span>
+                    🔊 Probar {engineMode === 'neural' ? 'Voz Neuronal de Estudio' : 'Voz de Navegador'}
+                  </span>
                 </>
               )}
             </button>
@@ -477,7 +607,7 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
 
           {/* Notificación de aplicación masiva */}
           {bulkSavedSuccess && (
-            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
               <Check className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Configuración aplicada a todos los pensadores de género {genderTab === 'female' ? 'femenino' : 'masculino'}.</span>
             </div>
@@ -513,6 +643,7 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
             <button
               type="button"
               onClick={() => {
+                stopNeuralAudio();
                 cancelSpeech();
                 onClose();
               }}
