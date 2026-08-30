@@ -26,7 +26,7 @@ import {
   History,
   Clock,
 } from 'lucide-react';
-import { PREDEFINED_ROUTES, createCustomRoute } from '../config/routes';
+import { PREDEFINED_ROUTES } from '../config/routes';
 import { getCharacterById } from '../config/characters';
 import { sendMessage } from '../services/gemini';
 import { playNeuralVoice, stopAllAudio } from '../services/neuralAudio';
@@ -61,6 +61,7 @@ export const ForgeView = ({
   const [selectorTab, setSelectorTab] = useState('explore');
   const [customConceptInput, setCustomConceptInput] = useState('');
   const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
+  const [routeGenerationError, setRouteGenerationError] = useState('');
   const [activeStepIndex, setActiveStepIndex] = useState(0);
 
   // Estados de diálogo de la etapa
@@ -461,16 +462,18 @@ export const ForgeView = ({
 
   // Crear ruta personalizada dinámica con Gemini IA
   const handleCreateCustomRoute = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const topic = customConceptInput.trim();
     if (!topic || isGeneratingRoute) return;
 
     stopAllAudio();
     setIsGeneratingRoute(true);
+    setRouteGenerationError('');
 
     try {
       const customRoute = await generateDialecticRoute(topic);
       setCustomConceptInput('');
+      setRouteGenerationError('');
 
       setRoutesMap((prev) => ({
         ...prev,
@@ -480,7 +483,9 @@ export const ForgeView = ({
       handleSetActiveRouteId(customRoute.id);
       setActiveStepIndex(0);
     } catch (err) {
-      console.error('Error generando ruta con IA:', err);
+      console.error('[ForgeView Error] Error al generar ruta con IA:', err);
+      const msg = err?.message || 'Error al comunicarse con Gemini para generar la ruta.';
+      setRouteGenerationError(msg);
     } finally {
       setIsGeneratingRoute(false);
     }
@@ -803,8 +808,11 @@ export const ForgeView = ({
                 <input
                   type="text"
                   value={customConceptInput}
-                  onChange={(e) => setCustomConceptInput(e.target.value)}
-                  placeholder="Escribe tu concepto o dilema: ej. El amor líquido, El éxito laboral, La dignidad..."
+                  onChange={(e) => {
+                    setCustomConceptInput(e.target.value);
+                    if (routeGenerationError) setRouteGenerationError('');
+                  }}
+                  placeholder="Escribe tu concepto o dilema: ej. Feminismo y poder, El amor líquido, La dignidad laboral..."
                   disabled={isGeneratingRoute}
                   className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans disabled:opacity-50"
                 />
@@ -814,9 +822,40 @@ export const ForgeView = ({
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1f6feb] to-[#388bfd] hover:from-[#388bfd] hover:to-[#58a6ff] text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-[#1f6feb]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0"
                 >
                   <Sparkles className={`w-4 h-4 ${isGeneratingRoute ? 'animate-spin text-amber-300' : ''}`} />
-                  <span>{isGeneratingRoute ? 'Curando Ruta con IA...' : 'Forjar con IA'}</span>
+                  <span>{isGeneratingRoute ? `Curando para "${customConceptInput.slice(0, 15)}..."` : 'Forjar con IA'}</span>
                 </button>
               </form>
+
+              {/* Banner visual de carga dinámica con Gemini 2.0 Flash */}
+              {isGeneratingRoute && (
+                <div className="mt-3.5 p-3.5 rounded-xl bg-[#1f6feb]/10 border border-[#1f6feb]/40 flex items-center gap-3 animate-fadeIn select-none">
+                  <div className="w-5 h-5 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <div className="text-xs text-blue-100 font-sans">
+                    <strong className="text-[#58a6ff]">Analizando catálogo filosófico:</strong> Consultando a Gemini 2.0 Flash para seleccionar los 4 pensadores pertinentes y estructurar las 4 etapas dialécticas para <em className="text-amber-300 font-semibold">"{customConceptInput}"</em>...
+                  </div>
+                </div>
+              )}
+
+              {/* Alerta visible en caso de error */}
+              {routeGenerationError && (
+                <div className="mt-3.5 p-3.5 rounded-xl bg-red-950/50 border border-red-500/50 flex items-start justify-between gap-3 animate-fadeIn text-red-200">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span className="text-red-400 font-bold text-base shrink-0">⚠️</span>
+                    <div className="text-xs font-sans leading-relaxed">
+                      <strong className="text-red-300 font-semibold block mb-0.5">Error al generar ruta con IA:</strong>
+                      <span>{routeGenerationError}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRouteGenerationError('')}
+                    className="text-red-400 hover:text-white p-1 rounded-lg hover:bg-red-900/40 transition-colors cursor-pointer shrink-0"
+                    title="Cerrar aviso"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Grid de Rutas Clásicas */}

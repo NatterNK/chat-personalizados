@@ -17,6 +17,7 @@ import {
 import { characters } from '../config/characters';
 import { PhilosopherAvatar, getPhilosopherMonogram } from './PhilosopherAvatar';
 import { getSavedRoutes, deleteSavedRoute } from '../services/routeStorage';
+import { generateDialecticRoute } from '../services/compassService';
 
 /**
  * 1. DICCIONARIO DE EXPANSIÓN SEMÁNTICA (THESAURUS)
@@ -71,12 +72,15 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch, onSelectRoute }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeChip, setActiveChip] = useState(null);
   const [savedRoutesMap, setSavedRoutesMap] = useState(() => getSavedRoutes());
+  const [isForgingFromSearch, setIsForgingFromSearch] = useState(false);
+  const [forgeError, setForgeError] = useState('');
   const inputRef = useRef(null);
 
   // Recargar rutas al abrir
   useEffect(() => {
     if (isOpen) {
       setSavedRoutesMap(getSavedRoutes());
+      setForgeError('');
     }
   }, [isOpen]);
 
@@ -95,6 +99,26 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch, onSelectRoute }) 
     }
     deleteSavedRoute(routeId);
     setSavedRoutesMap(getSavedRoutes());
+  };
+
+  const handleForgeFromSearch = async () => {
+    const topic = searchQuery.trim();
+    if (!topic || isForgingFromSearch) return;
+
+    setIsForgingFromSearch(true);
+    setForgeError('');
+
+    try {
+      const customRoute = await generateDialecticRoute(topic);
+      setSavedRoutesMap(getSavedRoutes());
+      onClose();
+      onSelectRoute?.(customRoute.id);
+    } catch (err) {
+      console.error('[BrujulaModal Error] Error al forjar ruta:', err);
+      setForgeError(err?.message || 'Error al comunicarse con Gemini para forjar la ruta.');
+    } finally {
+      setIsForgingFromSearch(false);
+    }
   };
 
   // Auto-focus al abrir
@@ -542,6 +566,46 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch, onSelectRoute }) 
                   );
                 })}
               </div>
+
+              {/* Botón de Acción Directa: Forjar Ruta Dialéctica con IA sobre el tema buscado */}
+              {searchQuery.trim().length > 2 && (
+                <div className="pt-2 border-t border-[#21262d] flex flex-col sm:flex-row items-center justify-between gap-2.5 animate-fadeIn">
+                  <div className="text-xs text-zinc-300 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>¿Crear itinerario de 4 etapas para <strong className="text-white">"{searchQuery.trim()}"</strong>?</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleForgeFromSearch}
+                    disabled={isForgingFromSearch}
+                    className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#1f6feb] to-[#388bfd] hover:from-[#388bfd] hover:to-[#58a6ff] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-[#1f6feb]/20 disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isForgingFromSearch ? 'animate-spin text-amber-300' : ''}`} />
+                    <span>{isForgingFromSearch ? 'Curando ruta con IA...' : 'Forjar Ruta con IA'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Banner visual de carga */}
+              {isForgingFromSearch && (
+                <div className="p-3 rounded-xl bg-[#1f6feb]/10 border border-[#1f6feb]/40 flex items-center gap-3 animate-fadeIn">
+                  <div className="w-4 h-4 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span className="text-xs text-blue-200 font-sans">
+                    Consultando a Gemini 2.0 Flash para curar los 4 pensadores pertinentes...
+                  </span>
+                </div>
+              )}
+
+              {/* Banner de error */}
+              {forgeError && (
+                <div className="p-3 rounded-xl bg-red-950/50 border border-red-500/50 flex items-start justify-between gap-2 text-xs text-red-200 animate-fadeIn">
+                  <div className="flex items-start gap-2">
+                    <span className="text-red-400 font-bold">⚠️</span>
+                    <span><strong>Error:</strong> {forgeError}</span>
+                  </div>
+                  <button onClick={() => setForgeError('')} className="text-red-400 hover:text-white p-0.5">✕</button>
+                </div>
+              )}
             </div>
 
             {/* Listado de Recomendaciones */}

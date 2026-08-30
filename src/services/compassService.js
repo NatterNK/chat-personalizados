@@ -1,25 +1,24 @@
 import { GoogleGenAI } from '@google/genai';
-import { characters, getCharacterById } from '../config/characters';
-import { createCustomRoute } from '../config/routes';
+import { characters, getCharacterById, ID_ALIASES } from '../config/characters';
 import { saveRouteProgress } from './routeStorage';
 import { getApiKey } from './gemini';
 
 /**
  * 1. Inyección del Catálogo Completo de Personajes
- * Extrae id, name, focus, category y epoch para enviar a Gemini
+ * Extrae id, name, category, epoch y focus para enviar a Gemini
  */
 export const getCatalogSummary = () => {
   return characters.map((c) => ({
     id: c.id,
     name: c.name,
-    focus: c.title || c.thematicAngles?.why || c.quote || '',
     category: c.category,
     epoch: c.era || c.epoch || '',
+    focus: c.title || c.thematicAngles?.why || c.quote || '',
   }));
 };
 
 /**
- * Limpia bloques de código Markdown ```json ... ``` o extrae el bloque JSON más externo
+ * Limpia bloques de código Markdown ```json ... ``` y extrae el bloque JSON más externo
  */
 const cleanJsonText = (text) => {
   if (!text) return '';
@@ -32,7 +31,7 @@ const cleanJsonText = (text) => {
     cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
   }
 
-  // Buscar el primer '{' y el último '}' para extraer únicamente el JSON válido
+  // Extraer el substring delimitado por la primera '{' y la última '}'
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -43,26 +42,31 @@ const cleanJsonText = (text) => {
 };
 
 /**
- * Valida y resuelve el personaje exacto o más cercano en el catálogo
+ * Valida y resuelve el personaje exacto en el catálogo de personajes
  */
 const resolveCharacter = (charId) => {
-  if (!charId) return characters[0];
-
-  // Búsqueda directa por ID
-  const direct = characters.find((c) => c && c.id === charId);
-  if (direct) return direct;
-
-  // Búsqueda por getCharacterById (incluye alias como kant -> immanuel_kant)
-  const byAlias = getCharacterById(charId);
-  if (byAlias && byAlias.id !== characters[0].id) {
-    return byAlias;
+  if (!charId) {
+    throw new Error('El paso generado no contiene un characterId válido.');
   }
 
-  // Búsqueda aproximada por coincidencia de nombre o id normalizado
-  const normId = charId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanId = String(charId).toLowerCase().trim();
+
+  // 1. Búsqueda directa por ID exacto
+  const direct = characters.find((c) => c && c.id === cleanId);
+  if (direct) return direct;
+
+  // 2. Búsqueda por alias conocido (ej. 'kant' -> 'immanuel_kant', 'sartre' -> 'jean_paul_sartre')
+  const canonicalId = ID_ALIASES?.[cleanId];
+  if (canonicalId) {
+    const aliased = characters.find((c) => c && c.id === canonicalId);
+    if (aliased) return aliased;
+  }
+
+  // 3. Búsqueda por coincidencia aproximada de ID o nombre
+  const normId = cleanId.replace(/[^a-z0-9]/g, '');
   const found = characters.find((c) => {
     const cNorm = c.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const nameNorm = c.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameNorm = c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
     return (
       cNorm.includes(normId) ||
       normId.includes(cNorm) ||
@@ -71,14 +75,25 @@ const resolveCharacter = (charId) => {
     );
   });
 
-  return found || byAlias || characters[0];
+  if (found) return found;
+
+  // Si no se encuentra, usamos getCharacterById
+  const fallback = getCharacterById(cleanId);
+  if (fallback) return fallback;
+
+  throw new Error(`El personaje '${charId}' devuelto por la IA no existe en el catálogo.`);
 };
 
 /**
- * 2. Generación Dinámica de Rutas Dialécticas con Gemini API (gemini-2.0-flash)
+ * 2. Generación Dinámica de Rutas Dialécticas con Gemini API (Modelo gemini-2.0-flash)
  */
 export const generateDialecticRoute = async (userTopic) => {
-  const cleanTopic = userTopic?.trim() || 'Concepto Universal';
+  const cleanTopic = userTopic?.trim();
+  if (!cleanTopic) {
+    const emptyErr = new Error('Debes ingresar un tema o dilema para forjar la ruta.');
+    console.error('[Brújula Error]:', emptyErr);
+    throw emptyErr;
+  }
 
   // Log de Diagnóstico Obligatorio
   console.log('[Brújula] Iniciando generación de ruta para el tema:', cleanTopic);
@@ -93,8 +108,10 @@ ${JSON.stringify(catalog, null, 2)}
 INSTRUCCIÓN:
 Actúa como un curador filosófico de élite. Analiza la especificidad del tema "${cleanTopic}".
 - Si el tema es 'Dignidad en política / rol del Estado / leyes', NO selecciones a los filósofos de introspección moral si tienes disponibles a filósofos políticos (ej. Hannah Arendt, Aristóteles, Karl Marx, Foucault, Simone Weil).
-- Si el tema es sobre ciencia/mente, selecciona filósofos de la ciencia o epistemólogos.
-- Si el tema es existencial/amor, selecciona pensadores del amor, ética o existencia.
+- Si el tema es sobre ciencia/mente/lógica, selecciona filósofos de la ciencia, epistemólogos o matemáticos (ej. Turing, Gödel, Einstein, Feynman, Jung, Wittgenstein).
+- Si el tema es existencial/amor/sentido, selecciona pensadores del amor, ética o existencia (ej. Sartre, Beauvoir, Camus, Nietzsche, Spinoza, Schopenhauer, Nussbaum).
+- Si el tema es sobre 'feminismo / género / opresión', selecciona a Simone de Beauvoir, Hannah Arendt, Simone Weil, Philippa Foot, Martha Nussbaum, etc.
+- Si el tema es sobre 'felicidad / bienestar / dolor', selecciona a Aristóteles, Spinoza, Schopenhauer, Camus, Marcus Aurelius, etc.
 
 Debes seleccionar EXACTAMENTE 4 personajes del catálogo que mejor aborden este matiz específico y ordenarlos en 4 etapas:
 1. Aporía/Punto de quiebre
@@ -120,20 +137,20 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
     const apiKey = getApiKey();
     if (!apiKey) {
       const missingKeyError = new Error('No se encontró la variable VITE_GEMINI_API_KEY en el entorno .env');
-      console.error('[Brújula Error]: Falta API Key.', missingKeyError);
+      console.error('[Brújula Error]:', missingKeyError);
       throw missingKeyError;
     }
 
     const client = new GoogleGenAI({ apiKey });
 
-    // Modelos a intentar en orden de preferencia (gemini-2.0-flash como principal)
+    // Modelos en orden: gemini-2.0-flash prioritario
     const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
     let rawText = '';
-    let lastModelError = null;
+    let lastError = null;
 
     for (const model of modelsToTry) {
       try {
-        console.log(`[Brújula] Enviando solicitud a Gemini con modelo '${model}'...`);
+        console.log(`[Brújula] Consultando a Gemini (${model}) para curar la ruta de "${cleanTopic}"...`);
         const response = await client.models.generateContent({
           model,
           contents: [
@@ -143,43 +160,45 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
             },
           ],
           config: {
-            temperature: 0.65,
+            temperature: 0.6,
             responseMimeType: 'application/json',
           },
         });
 
         rawText = response.text?.trim() || '';
         if (rawText) {
-          console.log(`[Brújula] Respuesta recibida exitosamente de modelo '${model}'.`);
+          console.log(`[Brújula] Respuesta recibida de Gemini (${model}).`);
           break;
         }
       } catch (err) {
-        lastModelError = err;
-        console.warn(`[Brújula] Modelo '${model}' falló:`, err.message || err);
+        lastError = err;
+        console.warn(`[Brújula] Intento con modelo '${model}' falló:`, err.message || err);
       }
     }
 
     if (!rawText) {
-      throw lastModelError || new Error('Gemini no devolvió texto en la respuesta.');
+      const apiErr = lastError || new Error('Gemini no devolvió texto en la respuesta.');
+      console.error('[Brújula Error]: Falló la llamada a la API de Gemini:', apiErr);
+      throw apiErr;
     }
 
-    // 3. Parseo Seguro y Verificación
+    // 3. Parseo Seguro y Verificación de JSON
     const cleanedJson = cleanJsonText(rawText);
     let parsed;
     try {
       parsed = JSON.parse(cleanedJson);
     } catch (parseErr) {
-      console.error('[Brújula Error]: Error al parsear JSON devuelto por Gemini. Texto bruto:', rawText, parseErr);
-      throw parseErr;
+      console.error('[Brújula Error]: Falló el parseo del JSON devuelto por Gemini. Respuesta bruta:', rawText, parseErr);
+      throw new Error(`La respuesta de Gemini no tiene formato JSON válido: ${parseErr.message}`);
     }
 
     if (!parsed || !parsed.steps || !Array.isArray(parsed.steps) || parsed.steps.length === 0) {
-      const shapeError = new Error('Estructura de JSON inválida: falta el arreglo "steps".');
-      console.error('[Brújula Error]:', shapeError, parsed);
-      throw shapeError;
+      const structureErr = new Error('El JSON de la ruta no contiene el arreglo "steps" esperado.');
+      console.error('[Brújula Error]:', structureErr, parsed);
+      throw structureErr;
     }
 
-    // Mapeo y validación de los 4 personajes contra el catálogo
+    // Mapeo y validación estricta de los 4 personajes devueltos contra el catálogo
     const timestamp = Date.now();
     const routeId = `route-${cleanTopic.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${timestamp}`;
 
@@ -201,27 +220,10 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       };
     });
 
-    // Garantizar exactamente 4 etapas
-    while (mappedSteps.length < 4) {
-      const idx = mappedSteps.length;
-      const fallbackList = [
-        { id: 'socrates', role: 'Aporía Inicial' },
-        { id: 'platon', role: 'Estructura Teórica' },
-        { id: 'immanuel_kant', role: 'Límites Críticos' },
-        { id: 'jean_paul_sartre', role: 'Aterrizaje Práctico' },
-      ];
-      const fb = fallbackList[idx];
-      const char = resolveCharacter(fb.id);
-      mappedSteps.push({
-        stepNumber: idx + 1,
-        characterId: char.id,
-        characterName: char.name,
-        stageTitle: `Etapa ${idx + 1}: ${fb.role}`,
-        role: fb.role,
-        mission: `Indaga el concepto de "${cleanTopic}".`,
-        systemPromptAddendum: `Estás en la Etapa ${idx + 1} sobre "${cleanTopic}".`,
-        initialGreeting: `Soy ${char.name}. Examinemos "${cleanTopic}".`,
-      });
+    if (mappedSteps.length < 4) {
+      const stepCountErr = new Error(`Gemini devolvió ${mappedSteps.length} pasos en lugar de 4.`);
+      console.error('[Brújula Error]:', stepCountErr);
+      throw stepCountErr;
     }
 
     const dynamicRoute = {
@@ -242,7 +244,7 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       steps: mappedSteps,
     };
 
-    // Guardar en localStorage ('saved_dialectic_routes')
+    // Guardar directamente en localStorage ('saved_dialectic_routes')
     saveRouteProgress(dynamicRoute);
 
     console.log(
@@ -254,12 +256,8 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
 
     return dynamicRoute;
   } catch (error) {
-    console.error('[Brújula Error]: Falló la generación dinámica con Gemini:', error);
-
-    // Respaldo de seguridad para que la aplicación continúe funcionando
-    console.warn('[Brújula] Activando generador de respaldo para el tema:', cleanTopic);
-    const fallbackRoute = createCustomRoute(cleanTopic);
-    saveRouteProgress(fallbackRoute);
-    return fallbackRoute;
+    console.error('[Brújula Error]:', error);
+    // Re-lanzar el error para que la UI lo muestre de forma visible al usuario en lugar de sustituirlo silenciosamente
+    throw error;
   }
 };

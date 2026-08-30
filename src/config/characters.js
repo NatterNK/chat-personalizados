@@ -1367,7 +1367,7 @@ REGLAS DE CONDUCTA Y DIALÉCTICA:
   },
 ];
 
-const ID_ALIASES = {
+export const ID_ALIASES = {
   kant: 'immanuel_kant',
   wittgenstein: 'ludwig_wittgenstein',
   foucault: 'michel_foucault',
