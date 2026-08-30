@@ -102,6 +102,13 @@ const getFallbackMonogram = (name = '') => {
   return parts.map((p) => p[0]).join('').slice(0, 3).toUpperCase();
 };
 
+export const getPhilosopherMonogram = (charId = '', charName = '') => {
+  const cleanId = (charId || '').toLowerCase().trim();
+  const meta = PHILOSOPHER_META[cleanId];
+  if (meta && meta.monogram) return meta.monogram;
+  return getFallbackMonogram(charName);
+};
+
 export const PhilosopherAvatar = ({
   character = null,
   id = null,

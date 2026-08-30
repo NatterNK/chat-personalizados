@@ -22,15 +22,27 @@ import {
   BookOpen,
   Zap,
   MessageSquare,
+  Trash2,
+  History,
+  Clock,
 } from 'lucide-react';
 import { PREDEFINED_ROUTES, createCustomRoute } from '../config/routes';
 import { getCharacterById } from '../config/characters';
 import { sendMessage } from '../services/gemini';
 import { playNeuralVoice, stopAllAudio } from '../services/neuralAudio';
 import { SpeechRecognizer, isSpeechRecognitionSupported } from '../services/speech';
-import { PhilosopherAvatar } from './PhilosopherAvatar';
-
-const STORAGE_KEY = 'forge_active_routes_state';
+import {
+  PhilosopherAvatar,
+  getPhilosopherMonogram,
+} from './PhilosopherAvatar';
+import {
+  getSavedRoutes,
+  getSavedRoutesList,
+  saveRouteProgress,
+  deleteSavedRoute,
+  getActiveRouteId,
+  setActiveRouteId as persistActiveRouteId,
+} from '../services/routeStorage';
 
 export const ForgeView = ({
   autoSpeakEnabled = false,
@@ -40,25 +52,12 @@ export const ForgeView = ({
   onSelectCharacter,
   onClose,
 }) => {
-  // Estado de rutas y progreso
-  const [routesState, setRoutesState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      return {};
-    }
-  });
+  // Estado de rutas y progreso desde routeStorage
+  const [routesMap, setRoutesMap] = useState(() => getSavedRoutes());
+  const [activeRouteId, setActiveRouteIdState] = useState(() => getActiveRouteId());
 
-  const [activeRouteId, setActiveRouteId] = useState(() => {
-    try {
-      const saved = localStorage.getItem('forge_selected_route_id');
-      return saved || null;
-    } catch (e) {
-      return null;
-    }
-  });
-
+  // Pestaña en el Selector: 'explore' | 'saved'
+  const [selectorTab, setSelectorTab] = useState('explore');
   const [customConceptInput, setCustomConceptInput] = useState('');
   const [activeStepIndex, setActiveStepIndex] = useState(0);
 
@@ -76,45 +75,50 @@ export const ForgeView = ({
   const messagesEndRef = useRef(null);
   const recognizerRef = useRef(null);
 
-  // Guardar estado en localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(routesState));
-    } catch (e) {}
-  }, [routesState]);
+  // Helper para cambiar y persistir la ruta activa
+  const handleSetActiveRouteId = useCallback((id) => {
+    setActiveRouteIdState(id);
+    persistActiveRouteId(id);
+  }, []);
 
-  useEffect(() => {
-    try {
-      if (activeRouteId) {
-        localStorage.setItem('forge_selected_route_id', activeRouteId);
-      } else {
-        localStorage.removeItem('forge_selected_route_id');
-      }
-    } catch (e) {}
-  }, [activeRouteId]);
+  // Lista de rutas guardadas ordenada
+  const savedRoutesList = useMemo(() => {
+    return Object.values(routesMap).sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [routesMap]);
 
   // Obtener la ruta activa actual
   const currentRoute = useMemo(() => {
     if (!activeRouteId) return null;
     const predefined = PREDEFINED_ROUTES.find((r) => r.id === activeRouteId);
-    if (predefined) return predefined;
-    return routesState[activeRouteId]?.customRoute || null;
-  }, [activeRouteId, routesState]);
+    if (predefined) {
+      const saved = routesMap[activeRouteId];
+      return {
+        ...predefined,
+        ...(saved || {}),
+        steps: predefined.steps,
+      };
+    }
+    return routesMap[activeRouteId] || null;
+  }, [activeRouteId, routesMap]);
 
   // Progreso de la ruta activa
   const activeRouteProgress = useMemo(() => {
     if (!activeRouteId) return null;
     return (
-      routesState[activeRouteId] || {
+      routesMap[activeRouteId] || {
         currentStepIndex: 0,
         completedSteps: [],
-        stepMessages: {},
+        messagesByStep: {},
         isCompleted: false,
       }
     );
-  }, [activeRouteId, routesState]);
+  }, [activeRouteId, routesMap]);
 
-  // Sincronizar activeStepIndex con el progreso
+  // Sincronizar activeStepIndex con el progreso de la ruta al cargar
   useEffect(() => {
     if (activeRouteProgress) {
       setActiveStepIndex(activeRouteProgress.currentStepIndex || 0);
@@ -144,14 +148,21 @@ export const ForgeView = ({
   // Mensajes de la etapa actual
   const currentMessages = useMemo(() => {
     if (!activeRouteId || !activeRouteProgress) return [];
-    return activeRouteProgress.stepMessages?.[activeStepIndex] || [];
+    return (
+      activeRouteProgress.messagesByStep?.[activeStepIndex] ||
+      activeRouteProgress.stepMessages?.[activeStepIndex] ||
+      []
+    );
   }, [activeRouteId, activeRouteProgress, activeStepIndex]);
 
   // Inicializar saludo del filósofo si la etapa está vacía
   useEffect(() => {
     if (!activeRouteId || !currentStep || !currentStepCharacter) return;
 
-    const existingMsgs = routesState[activeRouteId]?.stepMessages?.[activeStepIndex];
+    const existingMsgs =
+      routesMap[activeRouteId]?.messagesByStep?.[activeStepIndex] ||
+      routesMap[activeRouteId]?.stepMessages?.[activeStepIndex];
+
     if (!existingMsgs || existingMsgs.length === 0) {
       const greetingMsg = {
         id: `greeting-${activeRouteId}-step-${activeStepIndex}-${Date.now()}`,
@@ -160,25 +171,32 @@ export const ForgeView = ({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setRoutesState((prev) => {
-        const routeProg = prev[activeRouteId] || {
-          currentStepIndex: activeStepIndex,
-          completedSteps: [],
-          stepMessages: {},
-          isCompleted: false,
-        };
-        const updatedStepMessages = {
-          ...routeProg.stepMessages,
-          [activeStepIndex]: [greetingMsg],
-        };
-        return {
-          ...prev,
-          [activeRouteId]: {
-            ...routeProg,
-            stepMessages: updatedStepMessages,
-          },
-        };
-      });
+      const currentProg = routesMap[activeRouteId] || {
+        id: activeRouteId,
+        topic: currentRoute?.concept || currentRoute?.topic || 'Concepto',
+        title: currentRoute?.title || 'Forja Conceptual',
+        currentStepIndex: activeStepIndex,
+        completedSteps: [],
+        messagesByStep: {},
+        isCompleted: false,
+        steps: currentRoute?.steps,
+      };
+
+      const updatedMessagesByStep = {
+        ...(currentProg.messagesByStep || currentProg.stepMessages || {}),
+        [activeStepIndex]: [greetingMsg],
+      };
+
+      const updatedRoute = {
+        ...currentProg,
+        messagesByStep: updatedMessagesByStep,
+      };
+
+      saveRouteProgress(updatedRoute);
+      setRoutesMap((prev) => ({
+        ...prev,
+        [activeRouteId]: updatedRoute,
+      }));
 
       if (autoSpeakEnabled) {
         handleSpeak(greetingMsg);
@@ -186,7 +204,7 @@ export const ForgeView = ({
     }
   }, [activeRouteId, activeStepIndex, currentStep, currentStepCharacter]);
 
-  // Auto-scroll
+  // Auto-scroll suave
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages, isProcessing, interimTranscript]);
@@ -288,26 +306,33 @@ export const ForgeView = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Actualizar historial local
+    // Actualizar historial local y persistir
     const updatedMessages = [...currentMessages, userMessage];
-    setRoutesState((prev) => {
-      const routeProg = prev[activeRouteId] || {
-        currentStepIndex: activeStepIndex,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      };
-      return {
-        ...prev,
-        [activeRouteId]: {
-          ...routeProg,
-          stepMessages: {
-            ...routeProg.stepMessages,
-            [activeStepIndex]: updatedMessages,
-          },
-        },
-      };
-    });
+    const currentProg = routesMap[activeRouteId] || {
+      id: activeRouteId,
+      topic: currentRoute?.concept || currentRoute?.topic || 'Concepto',
+      title: currentRoute?.title || 'Forja Conceptual',
+      currentStepIndex: activeStepIndex,
+      completedSteps: [],
+      messagesByStep: {},
+      isCompleted: false,
+      steps: currentRoute?.steps,
+    };
+
+    const updatedRoute = {
+      ...currentProg,
+      currentStepIndex: activeStepIndex,
+      messagesByStep: {
+        ...(currentProg.messagesByStep || currentProg.stepMessages || {}),
+        [activeStepIndex]: updatedMessages,
+      },
+    };
+
+    saveRouteProgress(updatedRoute);
+    setRoutesMap((prev) => ({
+      ...prev,
+      [activeRouteId]: updatedRoute,
+    }));
 
     setInputText('');
     setAttachedImage(null);
@@ -315,7 +340,7 @@ export const ForgeView = ({
 
     try {
       // Inyectar el system prompt de la etapa de la forja
-      const stagePrompt = `\n[INSTRUCCIÓN CRÍTICA DE LA FORJA CONCEPTUAL - ETAPA ${activeStepIndex + 1}/4]\nTema/Concepto: "${currentRoute.concept}".\nRol de esta etapa: ${currentStep.role}.\nMisión analítica: ${currentStep.mission}.\n${currentStep.systemPromptAddendum}\nConduce la respuesta con rigor, manteniendo tu estilo característico pero enfocado en cumplir la misión de esta etapa dialéctica.`;
+      const stagePrompt = `\n[INSTRUCCIÓN CRÍTICA DE LA FORJA CONCEPTUAL - ETAPA ${activeStepIndex + 1}/4]\nTema/Concepto: "${currentRoute.concept || currentRoute.topic}".\nRol de esta etapa: ${currentStep.role}.\nMisión analítica: ${currentStep.mission}.\n${currentStep.systemPromptAddendum}\nConduce la respuesta con rigor, manteniendo tu estilo característico pero enfocado en cumplir la misión de esta etapa dialéctica.`;
 
       // Historial para Gemini
       const historyForApi = updatedMessages.map((m) => ({
@@ -339,20 +364,20 @@ export const ForgeView = ({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setRoutesState((prev) => {
-        const routeProg = prev[activeRouteId];
-        const msgs = [...(routeProg.stepMessages[activeStepIndex] || []), aiMessage];
-        return {
-          ...prev,
-          [activeRouteId]: {
-            ...routeProg,
-            stepMessages: {
-              ...routeProg.stepMessages,
-              [activeStepIndex]: msgs,
-            },
-          },
-        };
-      });
+      const finalMessages = [...updatedMessages, aiMessage];
+      const finalizedRoute = {
+        ...updatedRoute,
+        messagesByStep: {
+          ...(updatedRoute.messagesByStep || {}),
+          [activeStepIndex]: finalMessages,
+        },
+      };
+
+      saveRouteProgress(finalizedRoute);
+      setRoutesMap((prev) => ({
+        ...prev,
+        [activeRouteId]: finalizedRoute,
+      }));
 
       if (autoSpeakEnabled) {
         handleSpeak(aiMessage);
@@ -365,15 +390,20 @@ export const ForgeView = ({
         text: 'Ocurrió una turbulencia en la conexión dialéctica. Por favor, reformula tu planteamiento o verifica tu API Key de Gemini.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setRoutesState((prev) => ({
-        ...prev,
-        [activeRouteId]: {
-          ...prev[activeRouteId],
-          stepMessages: {
-            ...prev[activeRouteId].stepMessages,
-            [activeStepIndex]: [...(prev[activeRouteId].stepMessages[activeStepIndex] || []), errMessage],
-          },
+
+      const errMessages = [...updatedMessages, errMessage];
+      const errRoute = {
+        ...updatedRoute,
+        messagesByStep: {
+          ...(updatedRoute.messagesByStep || {}),
+          [activeStepIndex]: errMessages,
         },
+      };
+
+      saveRouteProgress(errRoute);
+      setRoutesMap((prev) => ({
+        ...prev,
+        [activeRouteId]: errRoute,
       }));
     } finally {
       setIsProcessing(false);
@@ -386,26 +416,31 @@ export const ForgeView = ({
     const nextIdx = activeStepIndex + 1;
     const isCompletedNow = nextIdx >= currentRoute.steps.length;
 
-    setRoutesState((prev) => {
-      const currentProg = prev[activeRouteId] || {
-        currentStepIndex: 0,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      };
+    const currentProg = routesMap[activeRouteId] || {
+      id: activeRouteId,
+      topic: currentRoute?.concept || currentRoute?.topic || 'Concepto',
+      title: currentRoute?.title || 'Forja Conceptual',
+      currentStepIndex: 0,
+      completedSteps: [],
+      messagesByStep: {},
+      isCompleted: false,
+      steps: currentRoute?.steps,
+    };
 
-      const completed = Array.from(new Set([...currentProg.completedSteps, activeStepIndex]));
+    const completed = Array.from(new Set([...(currentProg.completedSteps || []), activeStepIndex]));
 
-      return {
-        ...prev,
-        [activeRouteId]: {
-          ...currentProg,
-          currentStepIndex: isCompletedNow ? activeStepIndex : nextIdx,
-          completedSteps: completed,
-          isCompleted: isCompletedNow || currentProg.isCompleted,
-        },
-      };
-    });
+    const updatedRoute = {
+      ...currentProg,
+      currentStepIndex: isCompletedNow ? activeStepIndex : nextIdx,
+      completedSteps: completed,
+      isCompleted: isCompletedNow || !!currentProg.isCompleted,
+    };
+
+    saveRouteProgress(updatedRoute);
+    setRoutesMap((prev) => ({
+      ...prev,
+      [activeRouteId]: updatedRoute,
+    }));
 
     if (isCompletedNow) {
       setShowSynthesisModal(true);
@@ -414,11 +449,11 @@ export const ForgeView = ({
     }
   };
 
-  // Seleccionar ruta para iniciar
+  // Seleccionar ruta para iniciar o continuar
   const handleStartRoute = (route) => {
     stopAllAudio();
-    setActiveRouteId(route.id);
-    const existing = routesState[route.id];
+    handleSetActiveRouteId(route.id);
+    const existing = routesMap[route.id];
     setActiveStepIndex(existing?.currentStepIndex || 0);
   };
 
@@ -431,37 +466,60 @@ export const ForgeView = ({
     const customRoute = createCustomRoute(customConceptInput.trim());
     setCustomConceptInput('');
 
-    setRoutesState((prev) => ({
+    const newRouteData = {
+      ...customRoute,
+      currentStepIndex: 0,
+      completedSteps: [],
+      messagesByStep: {},
+      isCompleted: false,
+    };
+
+    saveRouteProgress(newRouteData);
+    setRoutesMap((prev) => ({
       ...prev,
-      [customRoute.id]: {
-        customRoute,
-        currentStepIndex: 0,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      },
+      [customRoute.id]: newRouteData,
     }));
 
-    setActiveRouteId(customRoute.id);
+    handleSetActiveRouteId(customRoute.id);
     setActiveStepIndex(0);
   };
 
-  // Reiniciar la ruta actual
+  // Eliminar una ruta guardada
+  const handleDeleteRoute = (e, routeId) => {
+    e.stopPropagation();
+    if (!window.confirm('¿Deseas eliminar esta ruta e historial de forma permanente?')) {
+      return;
+    }
+    deleteSavedRoute(routeId);
+    setRoutesMap(getSavedRoutes());
+    if (activeRouteId === routeId) {
+      handleSetActiveRouteId(null);
+    }
+  };
+
+  // Reiniciar la ruta actual desde la etapa 1
   const handleResetCurrentRoute = () => {
-    if (!window.confirm(`¿Deseas reiniciar la Forja de "${currentRoute?.concept}" desde la Etapa 1?`)) {
+    if (!window.confirm(`¿Deseas reiniciar la Forja de "${currentRoute?.concept || currentRoute?.topic}" desde la Etapa 1?`)) {
       return;
     }
     stopAllAudio();
-    setRoutesState((prev) => ({
+
+    const currentProg = routesMap[activeRouteId] || {};
+    const resetRoute = {
+      ...currentProg,
+      id: activeRouteId,
+      currentStepIndex: 0,
+      completedSteps: [],
+      messagesByStep: {},
+      isCompleted: false,
+    };
+
+    saveRouteProgress(resetRoute);
+    setRoutesMap((prev) => ({
       ...prev,
-      [activeRouteId]: {
-        ...(prev[activeRouteId]?.customRoute ? { customRoute: prev[activeRouteId].customRoute } : {}),
-        currentStepIndex: 0,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      },
+      [activeRouteId]: resetRoute,
     }));
+
     setActiveStepIndex(0);
     setShowSynthesisModal(false);
   };
@@ -469,10 +527,12 @@ export const ForgeView = ({
   // Generar texto de síntesis final
   const synthesisSummary = useMemo(() => {
     if (!currentRoute) return '';
-    let text = `🧭 SÍNTESIS DE LA FORJA CONCEPTUAL: ${currentRoute.concept.toUpperCase()}\n\n`;
+    const conceptName = currentRoute.concept || currentRoute.topic || 'Concepto';
+    let text = `🧭 SÍNTESIS DE LA FORJA CONCEPTUAL: ${conceptName.toUpperCase()}\n\n`;
+
     currentRoute.steps.forEach((step, idx) => {
       const stepChar = getCharacterById(step.characterId);
-      const msgs = activeRouteProgress?.stepMessages?.[idx] || [];
+      const msgs = activeRouteProgress?.messagesByStep?.[idx] || activeRouteProgress?.stepMessages?.[idx] || [];
       const userQuestions = msgs.filter((m) => m.role === 'user').map((m) => m.text);
       const lastReply = msgs.filter((m) => m.role === 'model').slice(-1)[0]?.text || '';
 
@@ -505,7 +565,7 @@ export const ForgeView = ({
   };
 
   // =========================================================================
-  // PANTALLA 1: SELECTOR DE RUTAS DIALÉCTICAS
+  // PANTALLA 1: SELECTOR DE RUTAS & HISTORIAL GUARDADO
   // =========================================================================
   if (!activeRouteId || !currentRoute) {
     return (
@@ -534,147 +594,325 @@ export const ForgeView = ({
           </button>
         </div>
 
-        {/* Banner Hero */}
-        <div className="bg-gradient-to-r from-[#10243e] via-[#12161f] to-[#1a1528] border border-[#1f6feb]/40 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-[#1f6feb]/10 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="max-w-2xl space-y-3 relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1f6feb]/20 border border-[#1f6feb]/40 text-xs font-mono text-[#58a6ff]">
-              <Flame className="w-3.5 h-3.5 text-amber-400" />
-              <span>MÓDULO DE RUTAS DIALÉCTICAS</span>
+        {/* Pestañas: [ 🧭 Explorar Rutas ] vs [ 📜 Mis Rutas Guardadas ] */}
+        <div className="flex items-center gap-2 border-b border-[#21262d] pb-2 select-none">
+          <button
+            type="button"
+            onClick={() => setSelectorTab('explore')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              selectorTab === 'explore'
+                ? 'bg-[#1f6feb] text-white shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-[#161b22]'
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            <span>Explorar Rutas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectorTab('saved')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              selectorTab === 'saved'
+                ? 'bg-[#1f6feb] text-white shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-[#161b22]'
+            }`}
+          >
+            <History className="w-4 h-4 text-amber-400" />
+            <span>Mis Rutas Guardadas</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#161b22] border border-[#30363d] text-zinc-300">
+              {savedRoutesList.length}
+            </span>
+          </button>
+        </div>
+
+        {/* PESTAÑA 2: HISTORIAL DE RUTAS GUARDADAS */}
+        {selectorTab === 'saved' ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-mono uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-2">
+                <History className="w-4 h-4 text-amber-400" />
+                <span>HISTORIAL DE FORJAS CONCEPTUALES EN CURSO</span>
+              </h2>
             </div>
 
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-              La Forja Conceptual
-            </h1>
-
-            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-              No examines tus ideas con un solo pensador. Somételas a un <strong className="text-white font-semibold">itinerario estructurado de 4 estaciones</strong>: desde la demolición de la falsa certeza (Sócrates) hasta la estructuración de la esencia, la delimitación crítica y el compromiso vital.
-            </p>
-          </div>
-        </div>
-
-        {/* Input para Forjar Concepto Propio */}
-        <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-4 sm:p-5 shadow-lg">
-          <div className="flex items-center gap-2 text-xs font-mono font-bold text-zinc-300 uppercase mb-3">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <span>¿TIENES UN DILEMA O CONCEPTO PERSONAL?</span>
-          </div>
-
-          <form onSubmit={handleCreateCustomRoute} className="flex flex-col sm:flex-row gap-2.5">
-            <input
-              type="text"
-              value={customConceptInput}
-              onChange={(e) => setCustomConceptInput(e.target.value)}
-              placeholder="Escribe tu concepto: ej. El amor líquido, El éxito laboral, La soledad..."
-              className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans"
-            />
-            <button
-              type="submit"
-              disabled={!customConceptInput.trim()}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1f6feb] to-[#388bfd] hover:from-[#388bfd] hover:to-[#58a6ff] text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-[#1f6feb]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Forjar mi Ruta</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Grid de Rutas Clásicas */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-mono uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-2">
-              <Compass className="w-4 h-4 text-[#58a6ff]" />
-              <span>RUTAS DIALÉCTICAS FUNDAMENTALES ({PREDEFINED_ROUTES.length})</span>
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {PREDEFINED_ROUTES.map((route) => {
-              const progress = routesState[route.id];
-              const completedCount = progress?.completedSteps?.length || 0;
-              const isCompleted = progress?.isCompleted;
-
-              return (
-                <div
-                  key={route.id}
-                  className="bg-[#12161f] border border-[#21262d] hover:border-[#1f6feb]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 transition-all duration-200 hover:shadow-xl hover:shadow-[#1f6feb]/5 group"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{route.icon}</span>
-                        <span className="text-[10px] font-mono font-bold bg-[#161b22] text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#30363d]">
-                          {route.tag}
-                        </span>
-                      </div>
-
-                      {isCompleted ? (
-                        <span className="text-[10px] font-mono font-bold bg-emerald-950/60 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          COMPLETA
-                        </span>
-                      ) : completedCount > 0 ? (
-                        <span className="text-[10px] font-mono text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-500/30">
-                          PASO {progress.currentStepIndex + 1}/4
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-[#58a6ff] transition-colors">
-                        {route.title}
-                      </h3>
-                      <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
-                        {route.description}
-                      </p>
-                    </div>
-
-                    {/* Fila de Filósofos del Itinerario con Avatares Tipográficos */}
-                    <div className="pt-2 border-t border-[#21262d]/60">
-                      <span className="text-[10px] font-mono text-zinc-500 block mb-1.5 uppercase">
-                        ESTACIONES DEL ITINERARIO:
-                      </span>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {route.steps.map((st, i) => {
-                          const char = getCharacterById(st.characterId);
-                          const charName = char?.name || st.characterName || st.characterId;
-                          return (
-                            <div
-                              key={st.stepNumber || i}
-                              className="flex items-center gap-1.5 text-[11px] bg-[#161b22] px-2 py-1 rounded-lg border border-[#30363d] text-zinc-300"
-                              title={`${st.stageTitle}: ${st.role}`}
-                            >
-                              <PhilosopherAvatar character={char} id={st.characterId} size="xs" showIcon={false} />
-                              <span className="font-medium truncate max-w-[80px]">
-                                {charName}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleStartRoute(route)}
-                    className="w-full py-2 px-3 rounded-xl bg-[#161b22] hover:bg-[#1f6feb] text-zinc-200 hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm group-hover:shadow-md"
-                  >
-                    <span>{completedCount > 0 ? 'Continuar Forja' : 'Iniciar Itinerario'}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+            {savedRoutesList.length === 0 ? (
+              <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-8 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-[#161b22] border border-[#30363d] flex items-center justify-center mx-auto text-xl">
+                  📜
                 </div>
-              );
-            })}
+                <h3 className="text-sm font-bold text-white">No tienes rutas guardadas aún</h3>
+                <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                  Inicia cualquiera de las 6 Rutas Dialécticas o forja tu propio concepto para retomarlo en cualquier momento.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSelectorTab('explore')}
+                  className="px-4 py-2 rounded-xl bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Explorar Rutas Disponibles</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {savedRoutesList.map((route) => {
+                  const completedCount = route.completedSteps?.length || 0;
+                  const isCompleted = route.isCompleted;
+                  const dateStr = route.updatedAt
+                    ? new Date(route.updatedAt).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Reciente';
+
+                  return (
+                    <div
+                      key={route.id}
+                      onClick={() => handleStartRoute(route)}
+                      className="bg-[#12161f] border border-[#21262d] hover:border-[#1f6feb]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 transition-all duration-200 hover:shadow-xl hover:shadow-[#1f6feb]/5 cursor-pointer group"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{route.icon || '🔮'}</span>
+                            <span className="text-[10px] font-mono font-bold bg-[#161b22] text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#30363d]">
+                              {route.tag || 'Ruta Dialéctica'}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteRoute(e, route.id)}
+                            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-300 hover:bg-[#161b22] border border-transparent hover:border-red-500/30 transition-colors"
+                            title="Eliminar ruta de mi historial"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-[#58a6ff] transition-colors">
+                            {route.title}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400 font-mono">
+                            <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                            <span>{dateStr}</span>
+                          </div>
+                        </div>
+
+                        {/* Barra y Badge de Progreso */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="text-zinc-400">Progreso:</span>
+                            {isCompleted ? (
+                              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Completada
+                              </span>
+                            ) : (
+                              <span className="text-amber-400 font-bold">
+                                Etapa {(route.currentStepIndex || 0) + 1} de 4
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="w-full bg-[#161b22] h-1.5 rounded-full overflow-hidden border border-[#30363d]">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                isCompleted ? 'bg-emerald-400' : 'bg-gradient-to-r from-[#1f6feb] to-[#58a6ff]'
+                              }`}
+                              style={{
+                                width: `${isCompleted ? 100 : Math.max(15, (completedCount / 4) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Estaciones del Itinerario */}
+                        {route.steps && (
+                          <div className="pt-2 border-t border-[#21262d]/60">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {route.steps.map((st, i) => {
+                                const stepChar = getCharacterById(st.characterId);
+                                const monogram = getPhilosopherMonogram(st.characterId, stepChar?.name || st.characterName);
+                                return (
+                                  <div
+                                    key={st.stepNumber || i}
+                                    className="flex items-center gap-1 text-[10px] bg-[#161b22] px-2 py-0.5 rounded-lg border border-[#30363d] text-zinc-300 font-mono"
+                                  >
+                                    <span className="text-zinc-500">{i + 1}.</span>
+                                    <span>{monogram}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartRoute(route)}
+                        className="w-full py-2 px-3 rounded-xl bg-[#161b22] hover:bg-[#1f6feb] text-zinc-200 hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm group-hover:shadow-md"
+                      >
+                        <span>Continuar Forja</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          /* PESTAÑA 1: EXPLORAR RUTAS PREDEFINIDAS + FORJA LIBRE */
+          <>
+            {/* Banner Hero */}
+            <div className="bg-gradient-to-r from-[#10243e] via-[#12161f] to-[#1a1528] border border-[#1f6feb]/40 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+              <div className="absolute right-0 top-0 w-96 h-96 bg-[#1f6feb]/10 rounded-full blur-3xl pointer-events-none" />
+              
+              <div className="max-w-2xl space-y-3 relative z-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1f6feb]/20 border border-[#1f6feb]/40 text-xs font-mono text-[#58a6ff]">
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span>MÓDULO DE RUTAS DIALÉCTICAS</span>
+                </div>
+
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                  La Forja Conceptual
+                </h1>
+
+                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                  No examines tus ideas con un solo pensador. Somételas a un <strong className="text-white font-semibold">itinerario estructurado de 4 estaciones</strong>: desde la demolición de la falsa certeza (Sócrates) hasta la estructuración de la esencia, la delimitación crítica y el compromiso vital.
+                </p>
+              </div>
+            </div>
+
+            {/* Input para Forjar Concepto Propio */}
+            <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-4 sm:p-5 shadow-lg">
+              <div className="flex items-center gap-2 text-xs font-mono font-bold text-zinc-300 uppercase mb-3">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>¿TIENES UN DILEMA O CONCEPTO PERSONAL?</span>
+              </div>
+
+              <form onSubmit={handleCreateCustomRoute} className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  type="text"
+                  value={customConceptInput}
+                  onChange={(e) => setCustomConceptInput(e.target.value)}
+                  placeholder="Escribe tu concepto: ej. El amor líquido, El éxito laboral, La dignidad..."
+                  className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans"
+                />
+                <button
+                  type="submit"
+                  disabled={!customConceptInput.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1f6feb] to-[#388bfd] hover:from-[#388bfd] hover:to-[#58a6ff] text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-[#1f6feb]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Forjar mi Ruta</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Grid de Rutas Clásicas */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-mono uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-[#58a6ff]" />
+                  <span>RUTAS DIALÉCTICAS FUNDAMENTALES ({PREDEFINED_ROUTES.length})</span>
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {PREDEFINED_ROUTES.map((route) => {
+                  const progress = routesMap[route.id];
+                  const completedCount = progress?.completedSteps?.length || 0;
+                  const isCompleted = progress?.isCompleted;
+
+                  return (
+                    <div
+                      key={route.id}
+                      className="bg-[#12161f] border border-[#21262d] hover:border-[#1f6feb]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 transition-all duration-200 hover:shadow-xl hover:shadow-[#1f6feb]/5 group"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{route.icon}</span>
+                            <span className="text-[10px] font-mono font-bold bg-[#161b22] text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#30363d]">
+                              {route.tag}
+                            </span>
+                          </div>
+
+                          {isCompleted ? (
+                            <span className="text-[10px] font-mono font-bold bg-emerald-950/60 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              COMPLETA
+                            </span>
+                          ) : completedCount > 0 ? (
+                            <span className="text-[10px] font-mono text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-500/30">
+                              PASO {progress.currentStepIndex + 1}/4
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-[#58a6ff] transition-colors">
+                            {route.title}
+                          </h3>
+                          <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
+                            {route.description}
+                          </p>
+                        </div>
+
+                        {/* Fila de Filósofos del Itinerario con Avatares Tipográficos */}
+                        <div className="pt-2 border-t border-[#21262d]/60">
+                          <span className="text-[10px] font-mono text-zinc-500 block mb-1.5 uppercase">
+                            ESTACIONES DEL ITINERARIO:
+                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {route.steps.map((st, i) => {
+                              const char = getCharacterById(st.characterId);
+                              const charName = char?.name || st.characterName || st.characterId;
+                              return (
+                                <div
+                                  key={st.stepNumber || i}
+                                  className="flex items-center gap-1.5 text-[11px] bg-[#161b22] px-2 py-1 rounded-lg border border-[#30363d] text-zinc-300"
+                                  title={`${st.stageTitle}: ${st.role}`}
+                                >
+                                  <PhilosopherAvatar character={char} id={st.characterId} size="xs" showIcon={false} />
+                                  <span className="font-medium truncate max-w-[80px]">
+                                    {charName}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartRoute(route)}
+                        className="w-full py-2 px-3 rounded-xl bg-[#161b22] hover:bg-[#1f6feb] text-zinc-200 hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm group-hover:shadow-md"
+                      >
+                        <span>{completedCount > 0 ? 'Continuar Forja' : 'Iniciar Itinerario'}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     );
   }
 
   // =========================================================================
-  // PANTALLA 2: RUTA ACTIVA POR ETAPAS
+  // PANTALLA 2: RUTA ACTIVA POR ETAPAS (STUDIO DIALÉCTICO)
   // =========================================================================
   const totalSteps = currentRoute.steps.length;
   const isLastStep = activeStepIndex === totalSteps - 1;
@@ -703,7 +941,7 @@ export const ForgeView = ({
             type="button"
             onClick={() => {
               stopAllAudio();
-              setActiveRouteId(null);
+              handleSetActiveRouteId(null);
             }}
             className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer shrink-0"
             title="Cambiar de ruta dialéctica"
@@ -714,7 +952,7 @@ export const ForgeView = ({
 
           <div className="min-w-0 pl-1 border-l border-[#30363d]/60">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm">{currentRoute.icon}</span>
+              <span className="text-sm">{currentRoute.icon || '🔮'}</span>
               <h2 className="text-xs sm:text-sm font-bold text-white truncate">
                 {currentRoute.title}
               </h2>
@@ -752,12 +990,13 @@ export const ForgeView = ({
         </div>
       </div>
 
-      {/* 2. Stepper Horizontal Responsive */}
-      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-2.5 sm:p-3 shrink-0 select-none">
-        <div className="grid grid-cols-4 gap-2">
+      {/* 2. Stepper Horizontal Responsive (Pills compactas y legibles en móvil) */}
+      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-2 sm:p-2.5 shrink-0 select-none shadow-sm">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
           {currentRoute.steps.map((st, idx) => {
-            const char = getCharacterById(st.characterId);
-            const charName = char?.name || st.characterName || st.characterId;
+            const stepChar = getCharacterById(st.characterId);
+            const shortName = stepChar?.name ? stepChar.name.split(' ')[0] : (st.characterName || 'ETP');
+            const monogram = getPhilosopherMonogram(st.characterId, stepChar?.name || st.characterName);
             const isCompleted = activeRouteProgress?.completedSteps?.includes(idx);
             const isActive = activeStepIndex === idx;
 
@@ -769,32 +1008,40 @@ export const ForgeView = ({
                   stopAllAudio();
                   setActiveStepIndex(idx);
                 }}
-                className={`p-2 sm:p-2.5 rounded-xl border transition-all flex items-center gap-2 cursor-pointer text-left ${
+                className={`p-1.5 sm:p-2.5 rounded-xl border transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer text-left ${
                   isActive
-                    ? 'bg-[#10243e] border-[#1f6feb] shadow-md ring-1 ring-[#1f6feb]/40'
+                    ? 'bg-[#10243e] border-[#1f6feb] shadow-md ring-1 ring-[#58a6ff]/50 text-white'
                     : isCompleted
-                    ? 'bg-[#0e1726] border-emerald-500/40 text-zinc-200'
-                    : 'bg-[#161b22] border-[#30363d]/70 opacity-60 hover:opacity-100'
+                    ? 'bg-[#0e1726] border-emerald-500/40 text-emerald-300 hover:border-emerald-400'
+                    : 'bg-[#161b22] border-[#30363d]/70 text-zinc-400 hover:text-zinc-200 hover:bg-[#1c2128]'
                 }`}
+                title={`Paso ${idx + 1}: ${stepChar?.name || st.characterName} — ${st.role}`}
               >
                 <div className="shrink-0">
                   {isCompleted ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                   ) : isActive ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-[#58a6ff] flex items-center justify-center">
+                    <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-[#58a6ff] flex items-center justify-center">
                       <div className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
                     </div>
                   ) : (
-                    <Circle className="w-4 h-4 text-zinc-600" />
+                    <Circle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-600" />
                   )}
                 </div>
 
-                <div className="min-w-0 hidden sm:block">
-                  <div className="text-[10px] font-mono text-zinc-400 uppercase">
-                    Paso {idx + 1}
-                  </div>
-                  <div className="text-xs font-bold text-zinc-100 truncate">
-                    {charName}
+                <div className="min-w-0 flex-1 truncate">
+                  {/* Móvil: "1. SOC" | Escritorio: "Paso 1" + Nombre */}
+                  <span className="sm:hidden text-[11px] font-semibold font-mono text-zinc-200 truncate block">
+                    {idx + 1}. {monogram}
+                  </span>
+
+                  <div className="hidden sm:block">
+                    <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-tight">
+                      Paso {idx + 1}
+                    </div>
+                    <div className="text-xs font-bold text-zinc-100 truncate">
+                      {shortName}
+                    </div>
                   </div>
                 </div>
               </button>
@@ -803,7 +1050,7 @@ export const ForgeView = ({
         </div>
       </div>
 
-      {/* 3. Card de Misión de la Etapa + Acción para Saltar a su Chat Libre */}
+      {/* 3. Card de Misión de la Etapa + Botón para Saltar al Chat Libre */}
       <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-sm">
         <div className="flex items-start gap-3.5 min-w-0 flex-1">
           <PhilosopherAvatar character={currentStepCharacter} size="lg" />
@@ -1045,7 +1292,7 @@ export const ForgeView = ({
                     ¡Forja Dialéctica Completada!
                   </h3>
                   <span className="text-xs text-zinc-400 font-mono">
-                    {currentRoute.title} — {currentRoute.concept}
+                    {currentRoute.title} — {currentRoute.concept || currentRoute.topic}
                   </span>
                 </div>
               </div>
@@ -1061,7 +1308,7 @@ export const ForgeView = ({
             <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar space-y-4">
               <div className="p-4 rounded-2xl bg-[#161b22] border border-[#30363d] space-y-2">
                 <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-sans">
-                  Has templado tu comprensión de <strong>"{currentRoute.concept}"</strong> superando las 4 etapas dialécticas:
+                  Has templado tu comprensión de <strong>"{currentRoute.concept || currentRoute.topic}"</strong> superando las 4 etapas dialécticas:
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-2">
                   {currentRoute.steps.map((st, i) => {

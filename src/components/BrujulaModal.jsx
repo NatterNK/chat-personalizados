@@ -1,7 +1,22 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Compass, X, Search, BookOpen, ArrowRight, Sparkles, HelpCircle, Flame, Lightbulb } from 'lucide-react';
+import {
+  Compass,
+  X,
+  Search,
+  BookOpen,
+  ArrowRight,
+  Sparkles,
+  HelpCircle,
+  Flame,
+  Lightbulb,
+  History,
+  Trash2,
+  Clock,
+  CheckCircle2,
+} from 'lucide-react';
 import { characters } from '../config/characters';
-import { PhilosopherAvatar } from './PhilosopherAvatar';
+import { PhilosopherAvatar, getPhilosopherMonogram } from './PhilosopherAvatar';
+import { getSavedRoutes, deleteSavedRoute } from '../services/routeStorage';
 
 /**
  * 1. DICCIONARIO DE EXPANSIÓN SEMÁNTICA (THESAURUS)
@@ -51,10 +66,36 @@ const normalizeText = (text = '') => {
     .trim();
 };
 
-export const BrujulaModal = ({ isOpen, onClose, onSelectMatch }) => {
+export const BrujulaModal = ({ isOpen, onClose, onSelectMatch, onSelectRoute }) => {
+  const [modalTab, setModalTab] = useState('brujula'); // 'brujula' | 'routes'
   const [searchQuery, setSearchQuery] = useState('');
   const [activeChip, setActiveChip] = useState(null);
+  const [savedRoutesMap, setSavedRoutesMap] = useState(() => getSavedRoutes());
   const inputRef = useRef(null);
+
+  // Recargar rutas al abrir
+  useEffect(() => {
+    if (isOpen) {
+      setSavedRoutesMap(getSavedRoutes());
+    }
+  }, [isOpen]);
+
+  const savedRoutesList = useMemo(() => {
+    return Object.values(savedRoutesMap).sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [savedRoutesMap]);
+
+  const handleDeleteSavedRoute = (e, routeId) => {
+    e.stopPropagation();
+    if (!window.confirm('¿Deseas eliminar esta ruta e historial de forma permanente?')) {
+      return;
+    }
+    deleteSavedRoute(routeId);
+    setSavedRoutesMap(getSavedRoutes());
+  };
 
   // Auto-focus al abrir
   useEffect(() => {
@@ -303,7 +344,7 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch }) => {
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Encuentra al pensador indicado para tu dilema, emoción o concepto en lenguaje cotidiano
+                Encuentra al pensador o retoma tus rutas dialécticas guardadas
               </p>
             </div>
           </div>
@@ -317,96 +358,227 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch }) => {
           </button>
         </div>
 
-        {/* Barra de Búsqueda Reactiva & Chips */}
-        <div className="p-4 sm:p-5 bg-[#0e1218] border-b border-[#21262d] space-y-3 shrink-0">
-          {/* Input de Búsqueda */}
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setActiveChip(null);
-              }}
-              placeholder="Describe tu emoción o dilema (ej. quiero ser feliz, culpa por descansar, tristeza, éxito)..."
-              className="w-full bg-[#161b22] border border-[#30363d] rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]/40 transition-all font-sans"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setActiveChip(null);
-                  inputRef.current?.focus();
-                }}
-                className="absolute right-3 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+        {/* Pestañas del Modal: [ 🧭 Brújula ] vs [ 📜 Mis Rutas Guardadas ] */}
+        <div className="flex items-center gap-2 px-4 sm:px-5 pt-3 pb-1 bg-[#0e1218] border-b border-[#21262d] select-none shrink-0">
+          <button
+            type="button"
+            onClick={() => setModalTab('brujula')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              modalTab === 'brujula'
+                ? 'bg-[#1f6feb] text-white shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-[#161b22]'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Buscar Pensadores</span>
+          </button>
 
-          {/* Píldoras / Chips de Acceso Rápido */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider mr-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-[#58a6ff]" />
-              TEMAS UNIVERSALES:
+          <button
+            type="button"
+            onClick={() => setModalTab('routes')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              modalTab === 'routes'
+                ? 'bg-[#1f6feb] text-white shadow-md'
+                : 'text-zinc-400 hover:text-white hover:bg-[#161b22]'
+            }`}
+          >
+            <History className="w-3.5 h-3.5 text-amber-400" />
+            <span>Mis Rutas Guardadas</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#161b22] border border-[#30363d] text-zinc-300">
+              {savedRoutesList.length}
             </span>
-            {QUICK_CHIPS.map((chip) => {
-              const isSelected = activeChip === chip.label;
-              return (
-                <button
-                  key={chip.label}
-                  onClick={() => handleChipClick(chip)}
-                  className={`text-[11px] px-2.5 py-1 rounded-lg font-mono transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'bg-[#1f6feb] text-white font-semibold shadow-md shadow-[#1f6feb]/30 border border-[#58a6ff]'
-                      : 'bg-[#161b22] text-zinc-400 hover:text-zinc-200 hover:bg-[#21262d] border border-[#30363d]/60'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
+          </button>
         </div>
 
-        {/* Listado de Recomendaciones */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar bg-[#0b0e14]">
-          {/* Caso 1: Búsqueda sin coincidencias directas -> Mensaje amigable + Fallback inteligente */}
-          {isSearchActive && !hasMatches ? (
-            <div className="space-y-5">
-              <div className="text-center py-6 px-4 rounded-2xl bg-[#12161f] border border-[#21262d] space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center justify-center mx-auto text-amber-400">
-                  <Lightbulb className="w-5 h-5" />
+        {/* CONTENIDO SEGÚN PESTAÑA */}
+        {modalTab === 'routes' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar bg-[#0b0e14]">
+            {savedRoutesList.length === 0 ? (
+              <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-8 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-[#161b22] border border-[#30363d] flex items-center justify-center mx-auto text-xl">
+                  📜
                 </div>
-                <h3 className="text-sm font-semibold text-zinc-200">
-                  No encontramos una coincidencia exacta para ese término.
-                </h3>
-                <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  Prueba explorando estos temas universales en las píldoras superiores o consulta a los filósofos con <strong className="text-[#58a6ff]">mayor intensidad analítica</strong> sugeridos a continuación:
+                <h3 className="text-sm font-bold text-white">No tienes rutas guardadas</h3>
+                <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                  Abre la Forja Conceptual para iniciar un itinerario de 4 estaciones sobre cualquier concepto o dilema.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onSelectRoute?.('ruta-verdad');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Ir a La Forja Conceptual</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {savedRoutesList.map((route) => {
+                  const completedCount = route.completedSteps?.length || 0;
+                  const isCompleted = route.isCompleted;
+                  const dateStr = route.updatedAt
+                    ? new Date(route.updatedAt).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Reciente';
+
+                  return (
+                    <div
+                      key={route.id}
+                      className="bg-[#12161f] border border-[#21262d] hover:border-[#1f6feb]/60 rounded-2xl p-4 flex flex-col justify-between gap-3 transition-all duration-200 hover:shadow-lg shadow-black/40"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-mono font-bold bg-[#161b22] text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#30363d] truncate">
+                            {route.topic || 'Concepto'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSavedRoute(e, route.id)}
+                            className="p-1 rounded-lg text-zinc-500 hover:text-red-300 hover:bg-[#161b22] border border-transparent hover:border-red-500/30 transition-colors cursor-pointer"
+                            title="Eliminar ruta de mi historial"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-white truncate">
+                          {route.title}
+                        </h4>
+
+                        <div className="flex items-center justify-between text-[11px] font-mono pt-1 text-zinc-400">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-zinc-500" />
+                            {dateStr}
+                          </span>
+                          {isCompleted ? (
+                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Completada
+                            </span>
+                          ) : (
+                            <span className="text-amber-400 font-semibold">
+                              Paso {(route.currentStepIndex || 0) + 1} de 4
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onSelectRoute?.(route.id);
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-[#161b22] hover:bg-[#1f6feb] text-zinc-200 hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                      >
+                        <span>Continuar Ruta</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Barra de Búsqueda Reactiva & Chips */}
+            <div className="p-4 sm:p-5 bg-[#0e1218] border-b border-[#21262d] space-y-3 shrink-0">
+              {/* Input de Búsqueda */}
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setActiveChip(null);
+                  }}
+                  placeholder="Describe tu emoción o dilema (ej. quiero ser feliz, culpa por descansar, tristeza, éxito)..."
+                  className="w-full bg-[#161b22] border border-[#30363d] rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]/40 transition-all font-sans"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setActiveChip(null);
+                      inputRef.current?.focus();
+                    }}
+                    className="absolute right-3 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Render de los pensadores de máxima intensidad analítica como sugerencia */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-1 text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
-                  <Flame className="w-3.5 h-3.5 text-[#58a6ff]" />
-                  <span>SUGERENCIA POR MÁXIMA INTENSIDAD ANALÍTICA:</span>
-                </div>
-
-                {fallbackTopCharacters.map(({ character: char, matchScore, suggestedQuestion }) => (
-                  <CharacterCard
-                    key={char.id}
-                    char={char}
-                    matchScore={matchScore}
-                    suggestedQuestion={suggestedQuestion}
-                    onSelectMatch={onSelectMatch}
-                  />
-                ))}
+              {/* Píldoras / Chips de Acceso Rápido */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-[#58a6ff]" />
+                  TEMAS UNIVERSALES:
+                </span>
+                {QUICK_CHIPS.map((chip) => {
+                  const isSelected = activeChip === chip.label;
+                  return (
+                    <button
+                      key={chip.label}
+                      onClick={() => handleChipClick(chip)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg font-mono transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#1f6feb] text-white font-semibold shadow-md shadow-[#1f6feb]/30 border border-[#58a6ff]'
+                          : 'bg-[#161b22] text-zinc-400 hover:text-zinc-200 hover:bg-[#21262d] border border-[#30363d]/60'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Listado de Recomendaciones */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar bg-[#0b0e14]">
+              {/* Caso 1: Búsqueda sin coincidencias directas -> Mensaje amigable + Fallback inteligente */}
+              {isSearchActive && !hasMatches ? (
+                <div className="space-y-5">
+                  <div className="text-center py-6 px-4 rounded-2xl bg-[#12161f] border border-[#21262d] space-y-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center justify-center mx-auto text-amber-400">
+                      <Lightbulb className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-zinc-200">
+                      No encontramos una coincidencia exacta para ese término.
+                    </h3>
+                    <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                      Prueba explorando estos temas universales en las píldoras superiores o consulta a los filósofos con <strong className="text-[#58a6ff]">mayor intensidad analítica</strong> sugeridos a continuación:
+                    </p>
+                  </div>
+
+                  {/* Render de los pensadores de máxima intensidad analítica como sugerencia */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-1 text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
+                      <Flame className="w-3.5 h-3.5 text-[#58a6ff]" />
+                      <span>SUGERENCIA POR MÁXIMA INTENSIDAD ANALÍTICA:</span>
+                    </div>
+
+                    {fallbackTopCharacters.map(({ character: char, matchScore, suggestedQuestion }) => (
+                      <CharacterCard
+                        key={char.id}
+                        char={char}
+                        matchScore={matchScore}
+                        suggestedQuestion={suggestedQuestion}
+                        onSelectMatch={onSelectMatch}
+                      />
+                    ))}
+                  </div>
+                </div>
           ) : (
             /* Caso 2: Coincidencias encontradas o lista por defecto */
             matchedCharacters.map(({ character: char, matchScore, suggestedQuestion }) => (
@@ -420,6 +592,8 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch }) => {
             ))
           )}
         </div>
+        </>
+        )}
 
         {/* Footer del Modal */}
         <div className="p-3 sm:p-4 bg-[#12161f] border-t border-[#21262d] flex items-center justify-between text-[11px] font-mono text-zinc-500 shrink-0">

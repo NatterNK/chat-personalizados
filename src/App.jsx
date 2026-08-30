@@ -87,6 +87,15 @@ function App() {
       localStorage.setItem('app_active_view', view);
     } catch (e) {}
   }, []);
+
+  const handleSelectRouteFromBrujula = useCallback((routeId) => {
+    setIsBrujulaOpen(false);
+    handleSelectView('forge');
+    try {
+      localStorage.setItem('active_route_id', routeId);
+      localStorage.setItem('forge_selected_route_id', routeId);
+    } catch (e) {}
+  }, [handleSelectView]);
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(() => {
     try {
       return localStorage.getItem('app_auto_speak_enabled') === 'true';
@@ -849,6 +858,7 @@ function App() {
         isOpen={isBrujulaOpen}
         onClose={() => setIsBrujulaOpen(false)}
         onSelectMatch={handleSelectBrujulaMatch}
+        onSelectRoute={handleSelectRouteFromBrujula}
       />
 
       {/* Modal de Configuración Manual de Voz */}
