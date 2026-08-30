@@ -31,6 +31,7 @@ import { getCharacterById } from '../config/characters';
 import { sendMessage } from '../services/gemini';
 import { playNeuralVoice, stopAllAudio } from '../services/neuralAudio';
 import { SpeechRecognizer, isSpeechRecognitionSupported } from '../services/speech';
+import { generateDialecticRoute } from '../services/compassService';
 import {
   PhilosopherAvatar,
   getPhilosopherMonogram,
@@ -59,6 +60,7 @@ export const ForgeView = ({
   // Pestaña en el Selector: 'explore' | 'saved'
   const [selectorTab, setSelectorTab] = useState('explore');
   const [customConceptInput, setCustomConceptInput] = useState('');
+  const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
 
   // Estados de diálogo de la etapa
@@ -457,31 +459,31 @@ export const ForgeView = ({
     setActiveStepIndex(existing?.currentStepIndex || 0);
   };
 
-  // Crear ruta personalizada desde el input
-  const handleCreateCustomRoute = (e) => {
+  // Crear ruta personalizada dinámica con Gemini IA
+  const handleCreateCustomRoute = async (e) => {
     e.preventDefault();
-    if (!customConceptInput.trim()) return;
+    const topic = customConceptInput.trim();
+    if (!topic || isGeneratingRoute) return;
 
     stopAllAudio();
-    const customRoute = createCustomRoute(customConceptInput.trim());
-    setCustomConceptInput('');
+    setIsGeneratingRoute(true);
 
-    const newRouteData = {
-      ...customRoute,
-      currentStepIndex: 0,
-      completedSteps: [],
-      messagesByStep: {},
-      isCompleted: false,
-    };
+    try {
+      const customRoute = await generateDialecticRoute(topic);
+      setCustomConceptInput('');
 
-    saveRouteProgress(newRouteData);
-    setRoutesMap((prev) => ({
-      ...prev,
-      [customRoute.id]: newRouteData,
-    }));
+      setRoutesMap((prev) => ({
+        ...prev,
+        [customRoute.id]: customRoute,
+      }));
 
-    handleSetActiveRouteId(customRoute.id);
-    setActiveStepIndex(0);
+      handleSetActiveRouteId(customRoute.id);
+      setActiveStepIndex(0);
+    } catch (err) {
+      console.error('Error generando ruta con IA:', err);
+    } finally {
+      setIsGeneratingRoute(false);
+    }
   };
 
   // Eliminar una ruta guardada
@@ -802,16 +804,17 @@ export const ForgeView = ({
                   type="text"
                   value={customConceptInput}
                   onChange={(e) => setCustomConceptInput(e.target.value)}
-                  placeholder="Escribe tu concepto: ej. El amor líquido, El éxito laboral, La dignidad..."
-                  className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans"
+                  placeholder="Escribe tu concepto o dilema: ej. El amor líquido, El éxito laboral, La dignidad..."
+                  disabled={isGeneratingRoute}
+                  className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={!customConceptInput.trim()}
+                  disabled={!customConceptInput.trim() || isGeneratingRoute}
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#1f6feb] to-[#388bfd] hover:from-[#388bfd] hover:to-[#58a6ff] text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-[#1f6feb]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Forjar mi Ruta</span>
+                  <Sparkles className={`w-4 h-4 ${isGeneratingRoute ? 'animate-spin text-amber-300' : ''}`} />
+                  <span>{isGeneratingRoute ? 'Curando Ruta con IA...' : 'Forjar con IA'}</span>
                 </button>
               </form>
             </div>
