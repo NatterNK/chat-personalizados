@@ -1,20 +1,21 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Sliders,
   Volume2,
-  X,
+  VolumeX,
+  Sparkles,
   RotateCcw,
-  Check,
+  Sliders,
+  CheckCircle2,
   Play,
   Square,
   Zap,
-  Landmark,
-  Compass,
-  Users,
-  Sparkles,
+  Globe,
   Radio,
-  Cpu,
+  X,
+  Info,
+  Check,
 } from 'lucide-react';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 import {
   getSpanishVoices,
   getBestVoice,
@@ -278,28 +279,13 @@ export const VoiceConfigModal = ({ isOpen, onClose, character }) => {
     setBulkSavedSuccess(false);
   };
 
-  const avatarImg = character.avatar || character.avatarUrl;
-
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fadeIn select-none">
       <div className="bg-[#0b0e14] border border-[#21262d] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col font-sans text-zinc-100 max-h-[90vh]">
         {/* Cabecera */}
         <div className="p-4 sm:p-5 bg-[#12161f] border-b border-[#21262d] flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
-              {avatarImg ? (
-                <img
-                  src={avatarImg}
-                  alt={character.name}
-                  className="w-full h-full object-cover filter contrast-125 grayscale"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <span style={{ display: avatarImg ? 'none' : 'flex' }}>🎙️</span>
-            </div>
+            <PhilosopherAvatar character={character} size="md" />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white">Voz Neuronal & Modulación</h3>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 
 export const CharacterHeader = ({
   character,
@@ -11,32 +12,13 @@ export const CharacterHeader = ({
   if (!character) return null;
 
   const intensity = character.analyticalIntensity || 85;
-  const avatarImage = character.avatar || character.avatarUrl;
 
   return (
     <div className="w-full bg-[#12161f] border border-[#21262d] rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg shadow-black/40">
       {/* Lado izquierdo: Avatar + Nombre + Estado + Cita Completa */}
       <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
-        {/* Avatar Frame con retrato fotográfico real */}
-        <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-inner mt-0.5 sm:mt-0">
-          {avatarImage ? (
-            <img
-              src={avatarImage}
-              alt={character.name}
-              className="w-full h-full object-cover filter contrast-125 brightness-95 grayscale hover:grayscale-0 transition-all duration-300"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-          ) : null}
-          <span
-            className="text-2xl"
-            style={{ display: avatarImage ? 'none' : 'flex' }}
-          >
-            🏛️
-          </span>
-        </div>
+        {/* Avatar Tipográfico / Iconográfico Limpio */}
+        <PhilosopherAvatar character={character} size="xl" className="mt-0.5 sm:mt-0 shadow-md" />
 
         {/* Info, Estado y Cita Completa sin Truncar */}
         <div className="space-y-1 flex-1 min-w-0">

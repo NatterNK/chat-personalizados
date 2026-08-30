@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, Copy, Check } from 'lucide-react';
+import { Volume2, VolumeX, Copy, Check } from 'lucide-react';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 
 export const ChatTranscript = ({
   messages = [],
@@ -13,31 +14,26 @@ export const ChatTranscript = ({
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = useState(null);
 
-  const avatarImage = character?.avatar || character?.avatarUrl;
-
-  // Auto-scroll robusto usando messagesEndRef
-  useEffect(() => {
+  // Auto-scroll suave hasta el último mensaje
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isProcessing, interimTranscript]);
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, interimTranscript, isProcessing]);
 
   const handleCopy = (id, text) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
-    <div className="flex-1 min-h-0 w-full overflow-y-auto px-3 sm:px-4 py-5 rounded-2xl bg-[#0e1217]/80 border border-[#1e2633] shadow-inner custom-scrollbar relative">
-      {/* Contenedor con Ancho de Lectura Óptimo */}
-      <div className="max-w-4xl mx-auto w-full px-2 sm:px-4 space-y-6">
-        {/* Badge Central: CONEXIÓN ESTABLECIDA */}
-        <div className="flex justify-center select-none">
-          <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#161b22] border border-[#30363d] text-[11px] font-mono tracking-widest text-zinc-400 uppercase shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff]"></span>
-            <span>CONEXIÓN ESTABLECIDA</span>
-          </div>
-        </div>
-
+    <div className="flex-1 min-h-0 w-full overflow-y-auto px-3 sm:px-6 py-4 rounded-2xl bg-[#0e1217]/80 border border-[#1e2633] shadow-inner custom-scrollbar select-text">
+      <div className="max-w-4xl mx-auto space-y-4">
+        
         {/* Lista de Mensajes */}
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
@@ -50,27 +46,9 @@ export const ChatTranscript = ({
                 isUser ? 'justify-end' : 'justify-start'
               } animate-fadeIn`}
             >
-              {/* Avatar Personaje con Retrato Fotográfico */}
+              {/* Avatar Personaje Tipográfico / Iconográfico */}
               {!isUser && (
-                <div className="w-9 h-9 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                  {avatarImage ? (
-                    <img
-                      src={avatarImage}
-                      alt={character?.name || 'Avatar'}
-                      className="w-full h-full object-cover grayscale contrast-125 brightness-95"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <span
-                    className="text-lg"
-                    style={{ display: avatarImage ? 'none' : 'flex' }}
-                  >
-                    🏛️
-                  </span>
-                </div>
+                <PhilosopherAvatar character={character} size="sm" className="mt-0.5 shadow-sm" />
               )}
 
               {/* Burbuja del Mensaje */}
@@ -164,20 +142,10 @@ export const ChatTranscript = ({
           </div>
         )}
 
-        {/* Indicador de carga / Pensando con retrato del pensador */}
+        {/* Indicador de carga / Pensando con avatar del pensador */}
         {isProcessing && (
           <div className="flex items-center gap-3 w-full justify-start animate-fadeIn">
-            <div className="w-9 h-9 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
-              {avatarImage ? (
-                <img
-                  src={avatarImage}
-                  alt={character?.name || 'Avatar'}
-                  className="w-full h-full object-cover grayscale contrast-125 brightness-95"
-                />
-              ) : (
-                <span>🏛️</span>
-              )}
-            </div>
+            <PhilosopherAvatar character={character} size="sm" />
             <div className="px-4 py-2.5 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
               <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.15s]"></div>

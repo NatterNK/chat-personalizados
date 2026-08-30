@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Compass, HelpCircle, BookOpen, ArrowUpRight } from 'lucide-react';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 
 export const MobileInfoModal = ({
   isOpen,
@@ -12,7 +13,6 @@ export const MobileInfoModal = ({
 
   const guide = character.criticalGuide;
   const book = character.recommendedBook;
-  const avatarImg = character.avatar || character.avatarUrl;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn select-none md:hidden">
@@ -21,20 +21,7 @@ export const MobileInfoModal = ({
         {/* Cabecera */}
         <div className="p-4 bg-[#12161f] border-b border-[#21262d] flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
-              {avatarImg ? (
-                <img
-                  src={avatarImg}
-                  alt={character.name}
-                  className="w-full h-full object-cover grayscale contrast-125"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <span style={{ display: avatarImg ? 'none' : 'flex' }}>🏛️</span>
-            </div>
+            <PhilosopherAvatar character={character} size="md" />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white">{character.name}</h3>

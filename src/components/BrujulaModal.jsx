@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Compass, X, Search, BookOpen, ArrowRight, Sparkles, HelpCircle, Flame, Lightbulb } from 'lucide-react';
 import { characters } from '../config/characters';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 
 /**
  * 1. DICCIONARIO DE EXPANSIÓN SEMÁNTICA (THESAURUS)
@@ -434,7 +435,6 @@ export const BrujulaModal = ({ isOpen, onClose, onSelectMatch }) => {
  * Subcomponente de Tarjeta de Personaje para la Brújula Dialéctica
  */
 const CharacterCard = ({ char, matchScore, suggestedQuestion, onSelectMatch }) => {
-  const avatarImg = char.avatar || char.avatarUrl;
   const whyDebate = char.thematicAngles?.why || char.criticalGuide?.aprenderás;
   const book = char.recommendedBook;
 
@@ -443,25 +443,7 @@ const CharacterCard = ({ char, matchScore, suggestedQuestion, onSelectMatch }) =
       {/* Fila Superior: Avatar + Nombre + Afinidad */}
       <div className="flex items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
-            {avatarImg ? (
-              <img
-                src={avatarImg}
-                alt={char.name}
-                className="w-full h-full object-cover filter contrast-125 grayscale group-hover:grayscale-0 transition-all duration-300"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }}
-              />
-            ) : null}
-            <span
-              className="text-xl"
-              style={{ display: avatarImg ? 'none' : 'flex' }}
-            >
-              🏛️
-            </span>
-          </div>
+          <PhilosopherAvatar character={char} size="lg" />
 
           <div className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-2 flex-wrap">

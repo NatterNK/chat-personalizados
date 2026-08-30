@@ -33,6 +33,7 @@ import { BrujulaModal } from './components/BrujulaModal';
 import { VoiceConfigModal } from './components/VoiceConfigModal';
 import { MobileInfoModal } from './components/MobileInfoModal';
 import { ForgeView } from './components/ForgeView';
+import { PhilosopherAvatar } from './components/PhilosopherAvatar';
 import {
   SpeechRecognizer,
   isSpeechRecognitionSupported,
@@ -537,6 +538,12 @@ function App() {
             autoSpeakEnabled={autoSpeakEnabled}
             onToggleAutoSpeak={handleToggleAutoSpeak}
             onOpenBrujula={() => setIsBrujulaOpen(true)}
+            onSelectView={handleSelectView}
+            onSelectCharacter={(charId) => {
+              handleSelectCharacter(charId);
+              handleSelectView('dojo');
+            }}
+            onClose={() => handleSelectView('dojo')}
           />
         ) : (
           <>
@@ -556,20 +563,7 @@ function App() {
                 </button>
 
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
-                    {activeCharacter?.avatar ? (
-                      <img
-                        src={activeCharacter.avatar}
-                        alt={activeCharacter.name}
-                        className="w-full h-full object-cover grayscale contrast-125"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <span className="text-xs">🏛️</span>
-                    )}
-                  </div>
+                  <PhilosopherAvatar character={activeCharacter} size="sm" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h2 className="text-xs font-bold text-zinc-100 truncate">

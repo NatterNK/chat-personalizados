@@ -21,12 +21,14 @@ import {
   HelpCircle,
   BookOpen,
   Zap,
+  MessageSquare,
 } from 'lucide-react';
 import { PREDEFINED_ROUTES, createCustomRoute } from '../config/routes';
 import { getCharacterById } from '../config/characters';
 import { sendMessage } from '../services/gemini';
 import { playNeuralVoice, stopAllAudio } from '../services/neuralAudio';
 import { SpeechRecognizer, isSpeechRecognitionSupported } from '../services/speech';
+import { PhilosopherAvatar } from './PhilosopherAvatar';
 
 const STORAGE_KEY = 'forge_active_routes_state';
 
@@ -34,6 +36,9 @@ export const ForgeView = ({
   autoSpeakEnabled = false,
   onToggleAutoSpeak,
   onOpenBrujula,
+  onSelectView,
+  onSelectCharacter,
+  onClose,
 }) => {
   // Estado de rutas y progreso
   const [routesState, setRoutesState] = useState(() => {
@@ -146,303 +151,278 @@ export const ForgeView = ({
   useEffect(() => {
     if (!activeRouteId || !currentStep || !currentStepCharacter) return;
 
-    setRoutesState((prev) => {
-      const routeData = prev[activeRouteId] || {
-        currentStepIndex: activeStepIndex,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      };
-
-      const existingStepMsgs = routeData.stepMessages?.[activeStepIndex];
-      if (!existingStepMsgs || existingStepMsgs.length === 0) {
-        const initialMsg = {
-          id: `init-forge-${activeRouteId}-${activeStepIndex}`,
-          role: 'model',
-          text: currentStep.initialGreeting,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isGreeting: true,
-        };
-
-        const updated = {
-          ...routeData,
-          stepMessages: {
-            ...routeData.stepMessages,
-            [activeStepIndex]: [initialMsg],
-          },
-        };
-
-        // Si autoSpeak está activo, hablar el saludo
-        if (autoSpeakEnabled) {
-          playNeuralVoice(currentStep.initialGreeting, {
-            character: currentStepCharacter,
-          });
-        }
-
-        return { ...prev, [activeRouteId]: updated };
-      }
-
-      return prev;
-    });
-  }, [activeRouteId, activeStepIndex, currentStep, currentStepCharacter]);
-
-  // Auto-scroll en el chat de la forja
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentMessages, isProcessing, interimTranscript]);
-
-  // Reconocimiento de voz por micrófono
-  useEffect(() => {
-    if (!isSpeechRecognitionSupported()) return;
-
-    const recognizer = new SpeechRecognizer({
-      lang: 'es-ES',
-      onResult: (text, isFinal) => {
-        if (isFinal) {
-          setInputText((prev) => (prev ? `${prev} ${text}` : text));
-          setInterimTranscript('');
-          setIsListening(false);
-        } else {
-          setInterimTranscript(text);
-        }
-      },
-      onError: () => {
-        setIsListening(false);
-        setInterimTranscript('');
-      },
-      onEnd: () => {
-        setIsListening(false);
-        setInterimTranscript('');
-      },
-    });
-
-    recognizerRef.current = recognizer;
-
-    return () => {
-      recognizer.abort();
-      stopAllAudio();
-    };
-  }, []);
-
-  const handleToggleListen = () => {
-    if (!recognizerRef.current) return;
-    if (isListening) {
-      recognizerRef.current.stop();
-      setIsListening(false);
-    } else {
-      stopAllAudio();
-      setIsListening(true);
-      recognizerRef.current.start();
-    }
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen válido.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setAttachedImage(event.target.result);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
-  // Enviar mensaje en la etapa
-  const handleSendMessage = async () => {
-    const textToSend = inputText.trim();
-    if (!textToSend && !attachedImage) return;
-
-    stopAllAudio();
-    setInputText('');
-    const imageToSend = attachedImage;
-    setAttachedImage(null);
-    setIsProcessing(true);
-
-    const userMsg = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text: textToSend,
-      image: imageToSend,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    // Actualizar historial local
-    const nextStepMessages = [...currentMessages, userMsg];
-
-    setRoutesState((prev) => {
-      const current = prev[activeRouteId] || {
-        currentStepIndex: activeStepIndex,
-        completedSteps: [],
-        stepMessages: {},
-        isCompleted: false,
-      };
-
-      return {
-        ...prev,
-        [activeRouteId]: {
-          ...current,
-          stepMessages: {
-            ...current.stepMessages,
-            [activeStepIndex]: nextStepMessages,
-          },
-        },
-      };
-    });
-
-    // Formatear historial para Gemini
-    const historyForGemini = nextStepMessages.slice(0, -1).map((m) => ({
-      role: m.role,
-      text: m.text,
-      image: m.image,
-    }));
-
-    const combinedSystemPrompt = `
-${currentStepCharacter?.systemPrompt || ''}
-
----
-CONTEXTO DE LA FORJA CONCEPTUAL:
-Estás participando en la forja dialéctica estructurada del concepto: "${currentRoute.concept}".
-Etapa actual: ${currentStep.stageTitle} (${currentStep.role}).
-Misión de esta etapa: ${currentStep.mission}
-${currentStep.systemPromptAddendum}
-
-REGLAS DE DIALÉCTICA:
-1. Mantén la coherencia con el objetivo de esta etapa específica.
-2. Respuestas de 2 a 4 oraciones rigurosas, incisivas y en español contemporáneo.
-3. Al finalizar, plantea una pregunta o interpelación que empuje la reflexión hacia el núcleo de la misión.
-`;
-
-    try {
-      const reply = await sendMessage({
-        userInput: textToSend,
-        image: imageToSend,
-        systemPrompt: combinedSystemPrompt,
-        history: historyForGemini,
-        philosopherId: currentStepCharacter?.id || 'filosofo',
-      });
-
-      const modelMsg = {
-        id: `model-${Date.now()}`,
+    const existingMsgs = routesState[activeRouteId]?.stepMessages?.[activeStepIndex];
+    if (!existingMsgs || existingMsgs.length === 0) {
+      const greetingMsg = {
+        id: `greeting-${activeRouteId}-step-${activeStepIndex}-${Date.now()}`,
         role: 'model',
-        text: reply,
+        text: currentStep.initialGreeting || currentStepCharacter.greeting,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      const finalMessages = [...nextStepMessages, modelMsg];
-
       setRoutesState((prev) => {
-        const current = prev[activeRouteId] || {
+        const routeProg = prev[activeRouteId] || {
           currentStepIndex: activeStepIndex,
           completedSteps: [],
           stepMessages: {},
           isCompleted: false,
         };
-
+        const updatedStepMessages = {
+          ...routeProg.stepMessages,
+          [activeStepIndex]: [greetingMsg],
+        };
         return {
           ...prev,
           [activeRouteId]: {
-            ...current,
+            ...routeProg,
+            stepMessages: updatedStepMessages,
+          },
+        };
+      });
+
+      if (autoSpeakEnabled) {
+        handleSpeak(greetingMsg);
+      }
+    }
+  }, [activeRouteId, activeStepIndex, currentStep, currentStepCharacter]);
+
+  // Auto-scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [currentMessages, isProcessing, interimTranscript]);
+
+  // Reproducción de audio neuronal
+  const handleSpeak = useCallback(
+    async (message) => {
+      if (!message || !message.text || !currentStepCharacter) return;
+      stopAllAudio();
+      setSpeakingMessageId(message.id);
+
+      await playNeuralVoice({
+        text: message.text,
+        character: currentStepCharacter,
+        onStart: () => setSpeakingMessageId(message.id),
+        onEnd: () => setSpeakingMessageId(null),
+        onError: () => setSpeakingMessageId(null),
+      });
+    },
+    [currentStepCharacter]
+  );
+
+  const handleReplay = (msg) => {
+    if (speakingMessageId === msg.id) {
+      stopAllAudio();
+      setSpeakingMessageId(null);
+    } else {
+      handleSpeak(msg);
+    }
+  };
+
+  // Reconocimiento de Voz
+  const handleToggleListen = () => {
+    if (!isSpeechRecognitionSupported()) {
+      alert('Tu navegador no soporta entrada de voz nativa.');
+      return;
+    }
+
+    if (isListening) {
+      recognizerRef.current?.stop();
+      setIsListening(false);
+      setInterimTranscript('');
+    } else {
+      stopAllAudio();
+      setSpeakingMessageId(null);
+
+      const recognizer = new SpeechRecognizer({
+        lang: 'es-ES',
+        onResult: (finalText) => {
+          setInputText((prev) => (prev ? `${prev} ${finalText}` : finalText));
+          setInterimTranscript('');
+        },
+        onInterim: (interim) => {
+          setInterimTranscript(interim);
+        },
+        onError: (err) => {
+          console.error('Speech recognition error:', err);
+          setIsListening(false);
+          setInterimTranscript('');
+        },
+        onEnd: () => {
+          setIsListening(false);
+          setInterimTranscript('');
+        },
+      });
+
+      recognizerRef.current = recognizer;
+      recognizer.start();
+      setIsListening(true);
+    }
+  };
+
+  // Adjuntar imagen
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setAttachedImage(ev.target?.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Enviar mensaje en la etapa
+  const handleSendMessage = async (e) => {
+    if (e) e.preventDefault();
+    const textToSend = inputText.trim();
+    if ((!textToSend && !attachedImage) || isProcessing || !currentStepCharacter) return;
+
+    stopAllAudio();
+    setSpeakingMessageId(null);
+
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: textToSend,
+      image: attachedImage || null,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    // Actualizar historial local
+    const updatedMessages = [...currentMessages, userMessage];
+    setRoutesState((prev) => {
+      const routeProg = prev[activeRouteId] || {
+        currentStepIndex: activeStepIndex,
+        completedSteps: [],
+        stepMessages: {},
+        isCompleted: false,
+      };
+      return {
+        ...prev,
+        [activeRouteId]: {
+          ...routeProg,
+          stepMessages: {
+            ...routeProg.stepMessages,
+            [activeStepIndex]: updatedMessages,
+          },
+        },
+      };
+    });
+
+    setInputText('');
+    setAttachedImage(null);
+    setIsProcessing(true);
+
+    try {
+      // Inyectar el system prompt de la etapa de la forja
+      const stagePrompt = `\n[INSTRUCCIÓN CRÍTICA DE LA FORJA CONCEPTUAL - ETAPA ${activeStepIndex + 1}/4]\nTema/Concepto: "${currentRoute.concept}".\nRol de esta etapa: ${currentStep.role}.\nMisión analítica: ${currentStep.mission}.\n${currentStep.systemPromptAddendum}\nConduce la respuesta con rigor, manteniendo tu estilo característico pero enfocado en cumplir la misión de esta etapa dialéctica.`;
+
+      // Historial para Gemini
+      const historyForApi = updatedMessages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        image: m.image,
+      }));
+
+      const replyText = await sendMessage(
+        textToSend || 'Examina esta imagen a la luz de nuestra indagación.',
+        currentStepCharacter,
+        historyForApi.slice(0, -1),
+        attachedImage,
+        stagePrompt
+      );
+
+      const aiMessage = {
+        id: `model-${Date.now()}`,
+        role: 'model',
+        text: replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setRoutesState((prev) => {
+        const routeProg = prev[activeRouteId];
+        const msgs = [...(routeProg.stepMessages[activeStepIndex] || []), aiMessage];
+        return {
+          ...prev,
+          [activeRouteId]: {
+            ...routeProg,
             stepMessages: {
-              ...current.stepMessages,
-              [activeStepIndex]: finalMessages,
+              ...routeProg.stepMessages,
+              [activeStepIndex]: msgs,
             },
           },
         };
       });
 
       if (autoSpeakEnabled) {
-        playNeuralVoice(reply, {
-          character: currentStepCharacter,
-          onStart: () => setSpeakingMessageId(modelMsg.id),
-          onEnd: () => setSpeakingMessageId(null),
-          onError: () => setSpeakingMessageId(null),
-        });
+        handleSpeak(aiMessage);
       }
     } catch (err) {
-      console.error('Error en Forja Conceptual Gemini:', err);
+      console.error('Error enviando mensaje en la forja:', err);
+      const errMessage = {
+        id: `err-${Date.now()}`,
+        role: 'model',
+        text: 'Ocurrió una turbulencia en la conexión dialéctica. Por favor, reformula tu planteamiento o verifica tu API Key de Gemini.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setRoutesState((prev) => ({
+        ...prev,
+        [activeRouteId]: {
+          ...prev[activeRouteId],
+          stepMessages: {
+            ...prev[activeRouteId].stepMessages,
+            [activeStepIndex]: [...(prev[activeRouteId].stepMessages[activeStepIndex] || []), errMessage],
+          },
+        },
+      }));
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  // Reproducir audio bajo demanda
-  const handleReplay = (msg) => {
-    if (speakingMessageId === msg.id) {
-      stopAllAudio();
-      setSpeakingMessageId(null);
-    } else {
-      stopAllAudio();
-      playNeuralVoice(msg.text, {
-        character: currentStepCharacter,
-        onStart: () => setSpeakingMessageId(msg.id),
-        onEnd: () => setSpeakingMessageId(null),
-        onError: () => setSpeakingMessageId(null),
-      });
     }
   };
 
   // Avanzar a la siguiente etapa
   const handleAdvanceStep = () => {
     stopAllAudio();
-    const nextIndex = activeStepIndex + 1;
+    const nextIdx = activeStepIndex + 1;
+    const isCompletedNow = nextIdx >= currentRoute.steps.length;
 
     setRoutesState((prev) => {
-      const current = prev[activeRouteId] || {
+      const currentProg = prev[activeRouteId] || {
         currentStepIndex: 0,
         completedSteps: [],
         stepMessages: {},
         isCompleted: false,
       };
 
-      const completed = Array.from(new Set([...current.completedSteps, activeStepIndex]));
-      const isNowComplete = nextIndex >= (currentRoute?.steps?.length || 4);
+      const completed = Array.from(new Set([...currentProg.completedSteps, activeStepIndex]));
 
       return {
         ...prev,
         [activeRouteId]: {
-          ...current,
+          ...currentProg,
+          currentStepIndex: isCompletedNow ? activeStepIndex : nextIdx,
           completedSteps: completed,
-          currentStepIndex: isNowComplete ? current.currentStepIndex : nextIndex,
-          isCompleted: isNowComplete ? true : current.isCompleted,
+          isCompleted: isCompletedNow || currentProg.isCompleted,
         },
       };
     });
 
-    if (nextIndex < (currentRoute?.steps?.length || 4)) {
-      setActiveStepIndex(nextIndex);
-    } else {
+    if (isCompletedNow) {
       setShowSynthesisModal(true);
+    } else {
+      setActiveStepIndex(nextIdx);
     }
   };
 
-  // Iniciar una ruta predefinida
+  // Seleccionar ruta para iniciar
   const handleStartRoute = (route) => {
     stopAllAudio();
     setActiveRouteId(route.id);
-    const existingProgress = routesState[route.id];
-    if (!existingProgress) {
-      setRoutesState((prev) => ({
-        ...prev,
-        [route.id]: {
-          currentStepIndex: 0,
-          completedSteps: [],
-          stepMessages: {},
-          isCompleted: false,
-        },
-      }));
-      setActiveStepIndex(0);
-    } else {
-      setActiveStepIndex(existingProgress.currentStepIndex || 0);
-    }
+    const existing = routesState[route.id];
+    setActiveStepIndex(existing?.currentStepIndex || 0);
   };
 
-  // Crear e iniciar ruta personalizada
+  // Crear ruta personalizada desde el input
   const handleCreateCustomRoute = (e) => {
     e.preventDefault();
     if (!customConceptInput.trim()) return;
@@ -497,7 +477,7 @@ REGLAS DE DIALÉCTICA:
       const lastReply = msgs.filter((m) => m.role === 'model').slice(-1)[0]?.text || '';
 
       text += `--- [ETAPA ${idx + 1}: ${step.stageTitle.toUpperCase()}] ---\n`;
-      text += `Pensador: ${stepChar?.name || step.characterId} (${step.role})\n`;
+      text += `Pensador: ${stepChar?.name || step.characterName || step.characterId} (${step.role})\n`;
       text += `Misión: ${step.mission}\n`;
       if (userQuestions.length > 0) {
         text += `Reflexión del usuario: "${userQuestions[userQuestions.length - 1]}"\n`;
@@ -515,12 +495,45 @@ REGLAS DE DIALÉCTICA:
     setTimeout(() => setCopiedSynthesis(false), 2000);
   };
 
+  const handleReturnToDojo = () => {
+    stopAllAudio();
+    if (onSelectView) {
+      onSelectView('dojo');
+    } else if (onClose) {
+      onClose();
+    }
+  };
+
   // =========================================================================
   // PANTALLA 1: SELECTOR DE RUTAS DIALÉCTICAS
   // =========================================================================
   if (!activeRouteId || !currentRoute) {
     return (
-      <div className="flex-1 flex flex-col h-full min-h-0 bg-[#0b0e14] overflow-y-auto custom-scrollbar p-3 sm:p-5 md:p-6 space-y-6">
+      <div className="flex-1 flex flex-col h-full min-h-0 bg-[#0b0e14] overflow-y-auto custom-scrollbar p-3 sm:p-5 md:p-6 space-y-5">
+        
+        {/* Barra Superior Fija de Retorno al Dojo Libre */}
+        <div className="flex items-center justify-between gap-2 p-2 sm:p-2.5 bg-[#12161f] border border-[#21262d] rounded-2xl shrink-0 shadow-md select-none">
+          <button
+            type="button"
+            onClick={handleReturnToDojo}
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white bg-[#161b22] hover:bg-[#1f6feb] border border-[#30363d] hover:border-[#1f6feb] transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+            title="Volver a la vista de chat libre con los pensadores"
+          >
+            <ArrowLeft className="w-4 h-4 text-[#58a6ff]" />
+            <span>← Volver al Dojo Libre (Chat)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenBrujula}
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 bg-[#161b22] hover:bg-amber-950/40 border border-amber-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title="Abrir brújula de búsqueda dialéctica"
+          >
+            <Compass className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Brújula Dialéctica</span>
+          </button>
+        </div>
+
         {/* Banner Hero */}
         <div className="bg-gradient-to-r from-[#10243e] via-[#12161f] to-[#1a1528] border border-[#1f6feb]/40 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
           <div className="absolute right-0 top-0 w-96 h-96 bg-[#1f6feb]/10 rounded-full blur-3xl pointer-events-none" />
@@ -617,7 +630,7 @@ REGLAS DE DIALÉCTICA:
                       </p>
                     </div>
 
-                    {/* Fila de Filósofos del Itinerario */}
+                    {/* Fila de Filósofos del Itinerario con Avatares Tipográficos */}
                     <div className="pt-2 border-t border-[#21262d]/60">
                       <span className="text-[10px] font-mono text-zinc-500 block mb-1.5 uppercase">
                         ESTACIONES DEL ITINERARIO:
@@ -625,15 +638,16 @@ REGLAS DE DIALÉCTICA:
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {route.steps.map((st, i) => {
                           const char = getCharacterById(st.characterId);
+                          const charName = char?.name || st.characterName || st.characterId;
                           return (
                             <div
-                              key={st.stepNumber}
-                              className="flex items-center gap-1 text-[11px] bg-[#161b22] px-2 py-1 rounded-lg border border-[#30363d] text-zinc-300"
+                              key={st.stepNumber || i}
+                              className="flex items-center gap-1.5 text-[11px] bg-[#161b22] px-2 py-1 rounded-lg border border-[#30363d] text-zinc-300"
                               title={`${st.stageTitle}: ${st.role}`}
                             >
-                              <span className="text-zinc-500 font-mono text-[9px]">{i + 1}.</span>
+                              <PhilosopherAvatar character={char} id={st.characterId} size="xs" showIcon={false} />
                               <span className="font-medium truncate max-w-[80px]">
-                                {char?.name || st.characterId}
+                                {charName}
                               </span>
                             </div>
                           );
@@ -668,30 +682,42 @@ REGLAS DE DIALÉCTICA:
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 bg-[#0b0e14] overflow-hidden p-2 sm:p-4 space-y-3">
-      {/* 1. Cabecera de la Forja */}
-      <div className="p-3 bg-[#12161f] border border-[#21262d] rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-md select-none">
-        <div className="flex items-center gap-3 min-w-0">
+      
+      {/* 1. Cabecera y Navegación de la Forja (Mobile & Desktop Friendly) */}
+      <div className="p-2.5 sm:p-3 bg-[#12161f] border border-[#21262d] rounded-2xl flex items-center justify-between gap-2 sm:gap-3 shrink-0 shadow-md select-none">
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Botón Volver al Dojo Libre */}
+          <button
+            type="button"
+            onClick={handleReturnToDojo}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white bg-[#161b22] hover:bg-[#1f6feb] border border-[#30363d] hover:border-[#1f6feb] transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            title="Volver a la vista principal de chat libre"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Volver al Dojo</span>
+            <span className="sm:hidden">Dojo</span>
+          </button>
+
+          {/* Botón Selector de Rutas */}
           <button
             type="button"
             onClick={() => {
               stopAllAudio();
               setActiveRouteId(null);
             }}
-            className="p-2 rounded-xl text-zinc-400 hover:text-white bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer shrink-0"
-            title="Volver al catálogo de rutas"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer shrink-0"
+            title="Cambiar de ruta dialéctica"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <Compass className="w-3.5 h-3.5 text-[#58a6ff]" />
+            <span className="hidden md:inline ml-1.5">Otras Rutas</span>
           </button>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-base">{currentRoute.icon}</span>
+          <div className="min-w-0 pl-1 border-l border-[#30363d]/60">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">{currentRoute.icon}</span>
               <h2 className="text-xs sm:text-sm font-bold text-white truncate">
                 {currentRoute.title}
               </h2>
-              <span className="hidden sm:inline-block text-[10px] font-mono text-[#58a6ff] bg-[#1f6feb]/20 px-2 py-0.5 rounded-full border border-[#1f6feb]/40">
-                {currentRoute.concept}
-              </span>
             </div>
             <span className="text-[10px] text-zinc-400 font-sans block truncate">
               {currentStep.stageTitle} — {currentStep.role}
@@ -699,7 +725,7 @@ REGLAS DE DIALÉCTICA:
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Toggle Auto-Voz */}
           <button
             type="button"
@@ -711,7 +737,7 @@ REGLAS DE DIALÉCTICA:
             }`}
             title={autoSpeakEnabled ? 'Voz activada' : 'Voz silenciada'}
           >
-            {autoSpeakEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {autoSpeakEnabled ? <Volume2 className="w-4 h-4 text-[#58a6ff]" /> : <VolumeX className="w-4 h-4 text-zinc-500" />}
           </button>
 
           {/* Reiniciar Ruta */}
@@ -777,47 +803,47 @@ REGLAS DE DIALÉCTICA:
         </div>
       </div>
 
-      {/* 3. Card de Misión de la Etapa */}
-      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-3 sm:p-4 flex items-start gap-3.5 shrink-0 shadow-sm">
-        <div className="w-12 h-12 rounded-xl bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
-          {currentStepCharacter?.avatar ? (
-            <img
-              src={currentStepCharacter.avatar}
-              alt={currentStepCharacter.name || currentStep.characterName}
-              className="w-full h-full object-cover filter contrast-125 grayscale"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-          ) : null}
-          <span
-            className="text-xl"
-            style={{ display: currentStepCharacter?.avatar ? 'none' : 'flex' }}
-          >
-            🏛️
-          </span>
-        </div>
+      {/* 3. Card de Misión de la Etapa + Acción para Saltar a su Chat Libre */}
+      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-sm">
+        <div className="flex items-start gap-3.5 min-w-0 flex-1">
+          <PhilosopherAvatar character={currentStepCharacter} size="lg" />
 
-        <div className="space-y-1 flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm sm:text-base font-bold text-white">
-              {currentStepCharacter?.name || currentStep.characterName}
-            </h3>
-            {currentStepCharacter?.era && (
-              <span className="text-[10px] font-mono text-zinc-400 bg-[#161b22] px-2 py-0.5 rounded-full border border-[#30363d]">
-                {currentStepCharacter.era}
+          <div className="space-y-1 flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm sm:text-base font-bold text-white">
+                {currentStepCharacter?.name || currentStep.characterName}
+              </h3>
+              {currentStepCharacter?.era && (
+                <span className="text-[10px] font-mono text-zinc-400 bg-[#161b22] px-2 py-0.5 rounded-full border border-[#30363d]">
+                  {currentStepCharacter.era}
+                </span>
+              )}
+              <span className="text-[10px] font-mono font-bold text-[#58a6ff] bg-[#1f6feb]/20 px-2 py-0.5 rounded-full border border-[#1f6feb]/30">
+                {currentStep.role}
               </span>
-            )}
-            <span className="text-[10px] font-mono font-bold text-[#58a6ff] bg-[#1f6feb]/20 px-2 py-0.5 rounded-full border border-[#1f6feb]/30">
-              {currentStep.role}
-            </span>
-          </div>
+            </div>
 
-          <p className="text-xs text-slate-300 font-sans leading-relaxed select-text">
-            🎯 <strong className="text-zinc-100">Misión:</strong> {currentStep.mission}
-          </p>
+            <p className="text-xs text-slate-300 font-sans leading-relaxed select-text">
+              🎯 <strong className="text-zinc-100">Misión:</strong> {currentStep.mission}
+            </p>
+          </div>
         </div>
+
+        {/* Botón para saltar directo a su chat libre */}
+        {onSelectCharacter && (
+          <button
+            type="button"
+            onClick={() => {
+              stopAllAudio();
+              onSelectCharacter(currentStepCharacter.id || currentStep.characterId);
+            }}
+            className="self-start sm:self-center px-3 py-1.5 rounded-xl bg-[#161b22] hover:bg-[#1f6feb]/20 text-[#58a6ff] hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-sm"
+            title={`Iniciar diálogo libre e ilimitado con ${currentStepCharacter?.name}`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Comenzar diálogo con {currentStepCharacter?.name?.split(' ')[0]}</span>
+          </button>
+        )}
       </div>
 
       {/* 4. Chat de la Etapa */}
@@ -834,25 +860,7 @@ REGLAS DE DIALÉCTICA:
               } animate-fadeIn`}
             >
               {!isUser && (
-                <div className="w-8 h-8 rounded-lg bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 mt-0.5">
-                  {currentStepCharacter?.avatar ? (
-                    <img
-                      src={currentStepCharacter.avatar}
-                      alt={currentStepCharacter.name || currentStep.characterName}
-                      className="w-full h-full object-cover grayscale contrast-125"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <span
-                    className="text-xs"
-                    style={{ display: currentStepCharacter?.avatar ? 'none' : 'flex' }}
-                  >
-                    🏛️
-                  </span>
-                </div>
+                <PhilosopherAvatar character={currentStepCharacter} size="sm" className="mt-0.5 shadow-sm" />
               )}
 
               <div
@@ -915,9 +923,7 @@ REGLAS DE DIALÉCTICA:
 
         {isProcessing && (
           <div className="flex items-center gap-2.5 w-full justify-start animate-fadeIn">
-            <div className="w-8 h-8 rounded-lg bg-[#161b22] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0">
-              <span>🏛️</span>
-            </div>
+            <PhilosopherAvatar character={currentStepCharacter} size="sm" />
             <div className="px-3 py-2 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
               <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.15s]"></div>
@@ -960,26 +966,25 @@ REGLAS DE DIALÉCTICA:
         </button>
       </div>
 
-      {/* 6. Barra de Entrada de Mensaje */}
-      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-2 sm:p-2.5 shrink-0">
+      {/* 6. Barra de Entrada para la Etapa */}
+      <div className="bg-[#12161f] border border-[#21262d] rounded-2xl p-2 sm:p-2.5 shadow-lg shrink-0">
         {attachedImage && (
-          <div className="mb-2 relative inline-block">
+          <div className="mb-2 p-2 bg-[#161b22] border border-[#30363d] rounded-xl flex items-center justify-between max-w-xs">
             <img src={attachedImage} alt="Adjunto" className="w-16 h-16 object-cover rounded-lg border border-[#30363d]" />
             <button
-              type="button"
               onClick={() => setAttachedImage(null)}
-              className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow cursor-pointer"
+              className="p-1 rounded-lg text-zinc-400 hover:text-white"
             >
-              <X className="w-3 h-3" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
           <input
             type="file"
             ref={fileInputRef}
-            onChange={handleImageUpload}
+            onChange={handleImageSelect}
             accept="image/*"
             className="hidden"
           />
@@ -987,7 +992,8 @@ REGLAS DE DIALÉCTICA:
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-xl text-zinc-400 hover:text-white bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer"
+            disabled={isProcessing}
+            className="p-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22] rounded-xl transition-colors cursor-pointer shrink-0"
             title="Adjuntar imagen"
           >
             <ImageIcon className="w-4 h-4" />
@@ -996,12 +1002,13 @@ REGLAS DE DIALÉCTICA:
           <button
             type="button"
             onClick={handleToggleListen}
-            className={`p-2 rounded-xl transition-colors cursor-pointer border ${
+            disabled={isProcessing}
+            className={`p-2.5 rounded-xl transition-all cursor-pointer shrink-0 ${
               isListening
-                ? 'bg-red-500/20 text-red-300 border-red-500/40 animate-pulse'
-                : 'text-zinc-400 hover:text-white bg-[#161b22] border-[#30363d]'
+                ? 'bg-red-500/20 text-red-400 border border-red-500/50 animate-pulse'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22]'
             }`}
-            title="Dictar por voz"
+            title={isListening ? 'Detener micrófono' : 'Hablar por micrófono'}
           >
             <Mic className="w-4 h-4" />
           </button>
@@ -1010,78 +1017,92 @@ REGLAS DE DIALÉCTICA:
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-            placeholder={`Debate con ${currentStepCharacter?.name} sobre ${currentRoute.concept}...`}
-            className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#58a6ff] transition-all font-sans"
+            placeholder={`Debate con ${currentStepCharacter?.name}: ${currentStep.role}...`}
+            disabled={isProcessing}
+            className="flex-1 bg-transparent border-none text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none font-sans"
           />
 
           <button
-            type="button"
-            onClick={handleSendMessage}
+            type="submit"
             disabled={(!inputText.trim() && !attachedImage) || isProcessing}
-            className="p-2 rounded-xl bg-[#1f6feb] hover:bg-[#388bfd] text-white transition-all shadow-md shadow-[#1f6feb]/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="p-2.5 rounded-xl bg-[#1f6feb] hover:bg-[#388bfd] text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 shadow-sm"
+            title="Enviar réplica"
           >
             <Send className="w-4 h-4" />
           </button>
-        </div>
+        </form>
       </div>
 
-      {/* 7. Modal de Síntesis Final de la Forja */}
+      {/* 7. Modal de Síntesis Final */}
       {showSynthesisModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fadeIn select-none">
-          <div className="bg-[#0b0e14] border border-[#21262d] w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col font-sans text-zinc-100 max-h-[85vh]">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0b0e14] border border-[#21262d] w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col font-sans text-zinc-100 max-h-[90vh]">
             <div className="p-4 sm:p-5 bg-[#12161f] border-b border-[#21262d] flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                  <Trophy className="w-5 h-5" />
-                </div>
+                <Trophy className="w-6 h-6 text-amber-400" />
                 <div>
-                  <h3 className="text-base font-bold text-white">Síntesis de la Forja Conceptual</h3>
-                  <p className="text-xs text-zinc-400">
-                    Concepto templado: <span className="text-[#58a6ff] font-semibold">{currentRoute.concept}</span>
-                  </p>
+                  <h3 className="text-base sm:text-lg font-bold text-white">
+                    ¡Forja Dialéctica Completada!
+                  </h3>
+                  <span className="text-xs text-zinc-400 font-mono">
+                    {currentRoute.title} — {currentRoute.concept}
+                  </span>
                 </div>
               </div>
 
               <button
-                type="button"
                 onClick={() => setShowSynthesisModal(false)}
-                className="p-2 rounded-xl text-zinc-400 hover:text-white bg-[#161b22] border border-[#30363d] transition-colors cursor-pointer"
+                className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-[#161b22] border border-transparent hover:border-[#30363d] transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar space-y-4 flex-1">
-              <div className="p-4 rounded-2xl bg-[#12161f] border border-[#21262d] font-mono text-xs sm:text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap select-text">
-                {synthesisSummary}
+            <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar space-y-4">
+              <div className="p-4 rounded-2xl bg-[#161b22] border border-[#30363d] space-y-2">
+                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-sans">
+                  Has templado tu comprensión de <strong>"{currentRoute.concept}"</strong> superando las 4 etapas dialécticas:
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-2">
+                  {currentRoute.steps.map((st, i) => {
+                    const char = getCharacterById(st.characterId);
+                    return (
+                      <div key={st.stepNumber || i} className="flex items-center gap-1.5 text-zinc-400 bg-[#0d1117] p-2 rounded-xl border border-[#21262d]">
+                        <PhilosopherAvatar character={char} id={st.characterId} size="xs" showIcon={false} />
+                        <span className="truncate">{char?.name || st.characterName || st.characterId}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-mono uppercase text-zinc-400 block mb-2 font-bold">
+                  DOCUMENTO DE SÍNTESIS CRÍTICA:
+                </label>
+                <div className="bg-[#0d1117] border border-[#21262d] rounded-2xl p-4 text-xs font-mono text-zinc-300 whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar select-text">
+                  {synthesisSummary}
+                </div>
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 bg-[#12161f] border-t border-[#21262d] flex items-center justify-between gap-3 shrink-0">
+            <div className="p-4 bg-[#12161f] border-t border-[#21262d] flex items-center justify-between gap-3 shrink-0">
               <button
-                type="button"
                 onClick={handleCopySynthesis}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#161b22] hover:bg-[#21262d] text-[#58a6ff] border border-[#30363d] transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[#161b22] hover:bg-[#1f6feb]/20 text-[#58a6ff] hover:text-white border border-[#30363d] hover:border-[#1f6feb] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
               >
                 {copiedSynthesis ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedSynthesis ? 'Copiado al Portapapeles' : 'Copiar Síntesis Completa'}</span>
               </button>
 
               <button
-                type="button"
                 onClick={() => {
                   setShowSynthesisModal(false);
-                  setActiveRouteId(null);
+                  handleReturnToDojo();
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#1f6feb] hover:bg-[#388bfd] text-white transition-all shadow-md cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-semibold transition-all cursor-pointer shadow-sm"
               >
-                Explorar Otras Rutas
+                Volver al Dojo
               </button>
             </div>
           </div>
