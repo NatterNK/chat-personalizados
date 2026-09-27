@@ -11,7 +11,7 @@ export const getApiKey = () => {
  * Identificador canónico del modelo Gemini
  * Sin prefijo "models/", únicamente la cadena limpia
  */
-export const GEMINI_MODEL_NAME = 'gemini-2.0-flash';
+export const GEMINI_MODEL_NAME = 'gemini-3.5-flash-lite';
 
 /**
  * Directiva Canónica del Sparring Intelectual
@@ -199,7 +199,7 @@ const executeGeminiRequest = async ({
 
 /**
  * Envía un mensaje al Sparring Intelectual con Gemini API
- * Modelo: "gemini-2.0-flash" (sin prefijo "models/")
+ * Modelo: "gemini-3.5-flash-lite" (sin prefijo "models/")
  */
 export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
   let userInput = '';
@@ -241,7 +241,7 @@ export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
 /**
  * Inspector de Conceptos (Glosario Rápido)
  * Define un término filosófico/ético con estructura clara de 3 puntos
- * Modelo: "gemini-2.0-flash"
+ * Modelo: "gemini-3.5-flash-lite"
  */
 export const inspectConcept = async (word = '') => {
   const cleanWord = word.trim();

@@ -84,7 +84,7 @@ const resolveCharacter = (charId) => {
 };
 
 /**
- * 2. Generación Dinámica de Rutas Dialécticas con Gemini API (Modelo gemini-2.0-flash)
+ * 2. Generación Dinámica de Rutas Dialécticas con Gemini API (Modelo gemini-3.5-flash-lite)
  */
 export const generateDialecticRoute = async (userTopic) => {
   const cleanTopic = userTopic?.trim();
@@ -139,14 +139,14 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       throw missingKeyError;
     }
 
-    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
     let rawText = '';
 
     // Intento con SDK
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash-lite',
         generationConfig: {
           temperature: 0.6,
           responseMimeType: 'application/json',
