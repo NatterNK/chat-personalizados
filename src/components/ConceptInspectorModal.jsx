@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Search, X, Copy, Check, Sparkles, ArrowRight, CornerDownLeft } from 'lucide-react';
+import { BookOpen, Search, X, Copy, Check, Sparkles, ArrowRight } from 'lucide-react';
 import { inspectConcept } from '../services/gemini';
 import { MarkdownRenderer } from './MarkdownRenderer';
 

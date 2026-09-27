@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  Sparkles,
   BookOpen,
-  Volume2,
-  VolumeX,
   AlertTriangle,
-  RotateCcw,
-  Shield,
-  Trash2,
 } from 'lucide-react';
 import { ThreadTabs } from './components/ThreadTabs';
 import { ChatTranscript } from './components/ChatTranscript';
@@ -15,7 +9,6 @@ import { MessageInputBar } from './components/MessageInputBar';
 import { ConceptInspectorModal } from './components/ConceptInspectorModal';
 import {
   getThreads,
-  saveThreads,
   getActiveThreadId,
   setActiveThreadId,
   createNewThread,
