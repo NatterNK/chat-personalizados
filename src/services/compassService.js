@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { characters, getCharacterById, ID_ALIASES } from '../config/characters';
 import { saveRouteProgress } from './routeStorage';
 import { getApiKey } from './gemini';
@@ -77,7 +77,6 @@ const resolveCharacter = (charId) => {
 
   if (found) return found;
 
-  // Si no se encuentra, usamos getCharacterById
   const fallback = getCharacterById(cleanId);
   if (fallback) return fallback;
 
@@ -95,7 +94,6 @@ export const generateDialecticRoute = async (userTopic) => {
     throw emptyErr;
   }
 
-  // Log de Diagnóstico Obligatorio
   console.log('[Brújula] Iniciando generación de ruta para el tema:', cleanTopic);
 
   const catalog = getCatalogSummary();
@@ -141,45 +139,58 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       throw missingKeyError;
     }
 
-    const client = new GoogleGenAI({ apiKey });
-
-    // Modelos en orden: gemini-2.0-flash prioritario
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     let rawText = '';
-    let lastError = null;
 
-    for (const model of modelsToTry) {
+    // Intento con SDK
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.0-flash',
+        generationConfig: {
+          temperature: 0.6,
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const response = await model.generateContent(prompt);
+      const result = await response.response;
+      rawText = result.text()?.trim() || '';
+    } catch (sdkErr) {
+      console.warn('[Brújula SDK Warning] Falló SDK, intentando REST API directa:', sdkErr.message || sdkErr);
+    }
+
+    // Fallback REST directo
+    if (!rawText) {
       try {
-        console.log(`[Brújula] Consultando a Gemini (${model}) para curar la ruta de "${cleanTopic}"...`);
-        const response = await client.models.generateContent({
-          model,
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
+        const restRes = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.6,
+              responseMimeType: 'application/json',
             },
-          ],
-          config: {
-            temperature: 0.6,
-            responseMimeType: 'application/json',
-          },
+          }),
         });
 
-        rawText = response.text?.trim() || '';
-        if (rawText) {
-          console.log(`[Brújula] Respuesta recibida de Gemini (${model}).`);
-          break;
+        if (!restRes.ok) {
+          const detail = await restRes.text();
+          console.error('[Brújula API Error] Endpoint exacto consultado:', endpointUrl, 'Status:', restRes.status, 'Detalle:', detail);
+          throw new Error(`HTTP ${restRes.status}: ${detail}`);
         }
-      } catch (err) {
-        lastError = err;
-        console.warn(`[Brújula] Intento con modelo '${model}' falló:`, err.message || err);
+
+        const json = await restRes.json();
+        rawText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      } catch (restErr) {
+        console.error('[Brújula Error] Falló consulta al endpoint:', endpointUrl, restErr);
+        throw restErr;
       }
     }
 
     if (!rawText) {
-      const apiErr = lastError || new Error('Gemini no devolvió texto en la respuesta.');
-      console.error('[Brújula Error]: Falló la llamada a la API de Gemini:', apiErr);
-      throw apiErr;
+      throw new Error('Gemini no devolvió texto en la respuesta.');
     }
 
     // 3. Parseo Seguro y Verificación de JSON
@@ -198,7 +209,6 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       throw structureErr;
     }
 
-    // Mapeo y validación estricta de los 4 personajes devueltos contra el catálogo
     const timestamp = Date.now();
     const routeId = `route-${cleanTopic.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${timestamp}`;
 
@@ -244,7 +254,6 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
       steps: mappedSteps,
     };
 
-    // Guardar directamente en localStorage ('saved_dialectic_routes')
     saveRouteProgress(dynamicRoute);
 
     console.log(
@@ -257,7 +266,6 @@ Responde ÚNICAMENTE un bloque JSON válido (sin texto adicional fuera del JSON)
     return dynamicRoute;
   } catch (error) {
     console.error('[Brújula Error]:', error);
-    // Re-lanzar el error para que la UI lo muestre de forma visible al usuario en lugar de sustituirlo silenciosamente
     throw error;
   }
 };

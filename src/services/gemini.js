@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 /**
  * Obtiene la API Key desde las variables de entorno de Vite
@@ -6,6 +6,12 @@ import { GoogleGenAI } from '@google/genai';
 export const getApiKey = () => {
   return import.meta.env.VITE_GEMINI_API_KEY || '';
 };
+
+/**
+ * Identificador canónico del modelo Gemini
+ * Sin prefijo "models/", únicamente la cadena limpia
+ */
+export const GEMINI_MODEL_NAME = 'gemini-2.0-flash';
 
 /**
  * Directiva Canónica del Sparring Intelectual
@@ -17,24 +23,6 @@ Reglas estrictas de comportamiento:
 2. MESA DE CONTRASTE: Cuando el usuario exprese una intuición o dilema, analiza su lógica. Menciona de forma orgánica qué pensador histórico reflexionó en esa misma línea (genealogía) y qué otro autor demolió o criticó esa postura (antítesis), sin adoptar tú una pose de teatro.
 3. ACOMPAÑAMIENTO HUMANO: Comprende la angustia existencial y la incertidumbre. No reduzcas los dilemas humanos a meros algoritmos fríos ni apures conclusiones. Ayuda a distinguir cuándo un dilema es conceptual y cuándo es un exceso de autoexigencia o sobrecarga emocional.
 4. CLARIDAD Y CONCRECIÓN: Aterriza las ideas abstractas en problemas del mundo real y dilemas cotidianos.`;
-
-/**
- * Instancia del cliente SDK (stateless)
- */
-let aiClient = null;
-
-export const getClient = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    const err = new Error('No se encontró la variable VITE_GEMINI_API_KEY en el entorno .env');
-    console.error('[Gemini API] Error de configuración:', err.message);
-    throw err;
-  }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey });
-  }
-  return aiClient;
-};
 
 /**
  * Parsea un Data URL en mimeType y data base64 puro
@@ -117,15 +105,108 @@ const buildContentsPayload = (history = [], userInput = '', image = null) => {
 };
 
 /**
+ * Ejecutor unificado de peticiones a Gemini API
+ * Utiliza @google/generative-ai con fallback a REST API directo
+ * Imprime el endpoint exacto en caso de error para facilitar la depuración
+ */
+const executeGeminiRequest = async ({
+  contents,
+  systemPrompt,
+  modelName = GEMINI_MODEL_NAME,
+  temperature = 0.75,
+  maxOutputTokens = 1200,
+}) => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    const err = new Error('No se encontró la variable VITE_GEMINI_API_KEY en el archivo .env');
+    console.error('[Gemini API] Error de configuración:', err.message);
+    throw err;
+  }
+
+  // Endpoint REST canónico de v1beta
+  const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  // 1. Intento primario con SDK oficial @google/generative-ai
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      systemInstruction: systemPrompt || undefined,
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+      },
+    });
+
+    const result = await model.generateContent({ contents });
+    const response = await result.response;
+    const text = response.text()?.trim();
+
+    if (text) {
+      return text;
+    }
+  } catch (sdkError) {
+    console.warn(`[Gemini SDK Error] Falló llamada con @google/generative-ai (${modelName}):`, sdkError.message || sdkError);
+    console.warn(`[Gemini Fallback] Intentando vía REST API directa al endpoint: https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`);
+  }
+
+  // 2. Intento de respaldo directo vía REST API (fetch)
+  try {
+    const bodyPayload = {
+      contents,
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+      },
+    };
+
+    if (systemPrompt) {
+      bodyPayload.systemInstruction = {
+        parts: [{ text: systemPrompt }],
+      };
+    }
+
+    const restResponse = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    if (!restResponse.ok) {
+      const errorBody = await restResponse.text();
+      const status = restResponse.status;
+      const errorMsg = `Error HTTP ${status} al consultar endpoint: https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=[HIDDEN]. Detalle: ${errorBody}`;
+      console.error('[Gemini API Error] Falló respuesta HTTP del endpoint:', endpointUrl, 'Status:', status, 'Detalle:', errorBody);
+      throw new Error(errorMsg);
+    }
+
+    const json = await restResponse.json();
+    const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+    if (candidateText) {
+      return candidateText;
+    }
+
+    throw new Error('La respuesta devuelta por la REST API de Gemini estaba vacía.');
+  } catch (restError) {
+    console.error(`[Gemini API Error] Endpoint exacto consultado: ${endpointUrl}`);
+    console.error('[Gemini API Error] Detalle del fallo:', restError);
+    throw restError;
+  }
+};
+
+/**
  * Envía un mensaje al Sparring Intelectual con Gemini API
- * Compatible tanto con sintaxis de objeto como de argumentos posicionales
+ * Modelo: "gemini-2.0-flash" (sin prefijo "models/")
  */
 export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
   let userInput = '';
   let image = null;
   let systemPrompt = SPARRING_SYSTEM_PROMPT;
   let history = [];
-  let model = 'gemini-2.0-flash';
+  let model = GEMINI_MODEL_NAME;
 
   if (typeof arg1 === 'object' && arg1 !== null && !Array.isArray(arg1)) {
     // Modo objeto: { userInput, message, image, systemPrompt, history, model }
@@ -133,7 +214,7 @@ export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
     image = arg1.image || null;
     systemPrompt = arg1.systemPrompt || SPARRING_SYSTEM_PROMPT;
     history = arg1.history || [];
-    model = arg1.model || 'gemini-2.0-flash';
+    model = (arg1.model || GEMINI_MODEL_NAME).replace(/^models\//, '');
   } else {
     // Modo posicional: (userInput, character, history, image, systemPromptAddendum)
     userInput = (typeof arg1 === 'string' ? arg1 : '').trim();
@@ -146,42 +227,21 @@ export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
     throw new Error('El mensaje no puede estar vacío.');
   }
 
-  const client = getClient();
   const contents = buildContentsPayload(history, userInput, image);
 
-  const modelsToTry = [model, 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-  const uniqueModels = Array.from(new Set(modelsToTry));
-
-  let lastError = null;
-  for (const m of uniqueModels) {
-    try {
-      const response = await client.models.generateContent({
-        model: m,
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.75,
-          maxOutputTokens: 1200,
-        },
-      });
-
-      const reply = response.text?.trim();
-      if (reply) {
-        return reply;
-      }
-    } catch (error) {
-      lastError = error;
-      console.warn(`[Gemini API] Error con modelo '${m}':`, error.message || error);
-    }
-  }
-
-  console.error('[Gemini API Error] Fallaron todos los modelos candidatos:', lastError);
-  throw lastError || new Error('No se pudo obtener respuesta del Sparring Intelectual.');
+  return await executeGeminiRequest({
+    contents,
+    systemPrompt,
+    modelName: model,
+    temperature: 0.75,
+    maxOutputTokens: 1200,
+  });
 };
 
 /**
  * Inspector de Conceptos (Glosario Rápido)
  * Define un término filosófico/ético con estructura clara de 3 puntos
+ * Modelo: "gemini-2.0-flash"
  */
 export const inspectConcept = async (word = '') => {
   const cleanWord = word.trim();
@@ -189,43 +249,25 @@ export const inspectConcept = async (word = '') => {
     throw new Error('Debes ingresar una palabra o concepto para consultar.');
   }
 
-  const client = getClient();
   const prompt = `Define el término '${cleanWord}' con claridad humana. Estructura:
 1) Etimología y significado en 2 líneas.
 2) Sentido filosófico/ético.
 3) Un ejemplo cotidiano concreto.
 Sin jerga innecesaria.`;
 
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-  let lastError = null;
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: prompt }],
+    },
+  ];
 
-  for (const model of modelsToTry) {
-    try {
-      const response = await client.models.generateContent({
-        model,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        config: {
-          temperature: 0.5,
-          maxOutputTokens: 700,
-        },
-      });
-
-      const text = response.text?.trim();
-      if (text) {
-        return text;
-      }
-    } catch (err) {
-      lastError = err;
-      console.warn(`[inspectConcept] Error con modelo '${model}':`, err.message || err);
-    }
-  }
-
-  throw lastError || new Error(`No fue posible consultar el concepto '${cleanWord}'.`);
+  return await executeGeminiRequest({
+    contents,
+    modelName: GEMINI_MODEL_NAME,
+    temperature: 0.5,
+    maxOutputTokens: 700,
+  });
 };
 
 export const sendPhilosophicalTurn = sendMessage;
