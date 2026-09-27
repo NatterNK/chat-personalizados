@@ -8,15 +8,26 @@ export const getApiKey = () => {
 };
 
 /**
+ * Directiva Canónica del Sparring Intelectual
+ */
+export const SPARRING_SYSTEM_PROMPT = `Eres un Sparring Intelectual y Compañero de Indagación reflexiva. Tu propósito es dialogar con el usuario sobre dudas existenciales, conceptos éticos, verdad, moral y naturaleza humana.
+
+Reglas estrictas de comportamiento:
+1. RIGOR SIN CONDESCENDENCIA: Nunca adules al usuario ni uses frases como 'brillante deducción', 'excelente pregunta' o 'tienes toda la razón'. Habla con franqueza, agudeza y calidez intelectual, como un par honesto.
+2. MESA DE CONTRASTE: Cuando el usuario exprese una intuición o dilema, analiza su lógica. Menciona de forma orgánica qué pensador histórico reflexionó en esa misma línea (genealogía) y qué otro autor demolió o criticó esa postura (antítesis), sin adoptar tú una pose de teatro.
+3. ACOMPAÑAMIENTO HUMANO: Comprende la angustia existencial y la incertidumbre. No reduzcas los dilemas humanos a meros algoritmos fríos ni apures conclusiones. Ayuda a distinguir cuándo un dilema es conceptual y cuándo es un exceso de autoexigencia o sobrecarga emocional.
+4. CLARIDAD Y CONCRECIÓN: Aterriza las ideas abstractas en problemas del mundo real y dilemas cotidianos.`;
+
+/**
  * Instancia del cliente SDK (stateless)
  */
 let aiClient = null;
 
-const getClient = () => {
+export const getClient = () => {
   const apiKey = getApiKey();
   if (!apiKey) {
     const err = new Error('No se encontró la variable VITE_GEMINI_API_KEY en el entorno .env');
-    console.error('Error de configuración:', err.message);
+    console.error('[Gemini API] Error de configuración:', err.message);
     throw err;
   }
   if (!aiClient) {
@@ -49,7 +60,7 @@ const buildContentsPayload = (history = [], userInput = '', image = null) => {
     if (!msg) continue;
     const parts = [];
 
-    // Si el mensaje anterior tenía una imagen adjunta
+    // Imagen adjunta previa
     if (msg.image) {
       const parsed = typeof msg.image === 'string' ? parseDataUrl(msg.image) : msg.image;
       if (parsed?.data && parsed?.mimeType) {
@@ -92,7 +103,7 @@ const buildContentsPayload = (history = [], userInput = '', image = null) => {
   if (userInput) {
     currentUserParts.push({ text: userInput });
   } else if (image && currentUserParts.length === 1) {
-    currentUserParts.push({ text: 'Por favor, examina esta imagen desde tu perspectiva filosófica.' });
+    currentUserParts.push({ text: 'Por favor, examina esta imagen desde tu perspectiva crítica y reflexiva.' });
   }
 
   if (currentUserParts.length > 0) {
@@ -106,103 +117,115 @@ const buildContentsPayload = (history = [], userInput = '', image = null) => {
 };
 
 /**
- * Envía un mensaje a Gemini con soporte multimodal (texto + imagen) y sin estado (Stateless Multi-turn)
+ * Envía un mensaje al Sparring Intelectual con Gemini API
+ * Compatible tanto con sintaxis de objeto como de argumentos posicionales
  */
-export const sendMessage = async ({
-  userInput,
-  message,
-  image = null,
-  systemPrompt,
-  history = [],
-  philosopherId = 'filósofo',
-  model = 'gemini-3.5-flash-lite',
-}) => {
-  const textToSend = (userInput || message || '').trim();
-  if (!textToSend && !image) {
+export const sendMessage = async (arg1, arg2, arg3, arg4, arg5) => {
+  let userInput = '';
+  let image = null;
+  let systemPrompt = SPARRING_SYSTEM_PROMPT;
+  let history = [];
+  let model = 'gemini-2.0-flash';
+
+  if (typeof arg1 === 'object' && arg1 !== null && !Array.isArray(arg1)) {
+    // Modo objeto: { userInput, message, image, systemPrompt, history, model }
+    userInput = (arg1.userInput || arg1.message || '').trim();
+    image = arg1.image || null;
+    systemPrompt = arg1.systemPrompt || SPARRING_SYSTEM_PROMPT;
+    history = arg1.history || [];
+    model = arg1.model || 'gemini-2.0-flash';
+  } else {
+    // Modo posicional: (userInput, character, history, image, systemPromptAddendum)
+    userInput = (typeof arg1 === 'string' ? arg1 : '').trim();
+    history = Array.isArray(arg3) ? arg3 : [];
+    image = arg4 || null;
+    systemPrompt = arg5 ? `${SPARRING_SYSTEM_PROMPT}\n\n${arg5}` : SPARRING_SYSTEM_PROMPT;
+  }
+
+  if (!userInput && !image) {
     throw new Error('El mensaje no puede estar vacío.');
   }
 
-  if (!systemPrompt) {
-    console.warn(`[Gemini API] Advertencia: systemPrompt no provisto para ${philosopherId}.`);
+  const client = getClient();
+  const contents = buildContentsPayload(history, userInput, image);
+
+  const modelsToTry = [model, 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  const uniqueModels = Array.from(new Set(modelsToTry));
+
+  let lastError = null;
+  for (const m of uniqueModels) {
+    try {
+      const response = await client.models.generateContent({
+        model: m,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.75,
+          maxOutputTokens: 1200,
+        },
+      });
+
+      const reply = response.text?.trim();
+      if (reply) {
+        return reply;
+      }
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Gemini API] Error con modelo '${m}':`, error.message || error);
+    }
+  }
+
+  console.error('[Gemini API Error] Fallaron todos los modelos candidatos:', lastError);
+  throw lastError || new Error('No se pudo obtener respuesta del Sparring Intelectual.');
+};
+
+/**
+ * Inspector de Conceptos (Glosario Rápido)
+ * Define un término filosófico/ético con estructura clara de 3 puntos
+ */
+export const inspectConcept = async (word = '') => {
+  const cleanWord = word.trim();
+  if (!cleanWord) {
+    throw new Error('Debes ingresar una palabra o concepto para consultar.');
   }
 
   const client = getClient();
-  const contents = buildContentsPayload(history, textToSend, image);
+  const prompt = `Define el término '${cleanWord}' con claridad humana. Estructura:
+1) Etimología y significado en 2 líneas.
+2) Sentido filosófico/ético.
+3) Un ejemplo cotidiano concreto.
+Sin jerga innecesaria.`;
 
-  try {
-    const response = await client.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction: systemPrompt || undefined,
-        temperature: 0.85,
-        maxOutputTokens: 1000,
-      },
-    });
+  const modelsToTry = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  let lastError = null;
 
-    const reply = response.text?.trim();
-    if (!reply) {
-      throw new Error('La respuesta devuelta por Gemini estaba vacía.');
-    }
-
-    return reply;
-  } catch (error) {
-    console.error(`[Gemini API Error] Falló llamada para '${philosopherId}' con modelo '${model}':`, error);
-
-    const errorMessage = error?.message || '';
-
-    // Respaldo automático inmediato ante errores de saturación / no disponibilidad
-    const isAvailabilityError =
-      errorMessage.includes('503') ||
-      errorMessage.includes('404') ||
-      errorMessage.includes('UNAVAILABLE') ||
-      errorMessage.includes('Unavailable') ||
-      errorMessage.includes('not found') ||
-      errorMessage.includes('NotFound') ||
-      errorMessage.includes('overloaded');
-
-    if (model === 'gemini-3.5-flash-lite' && isAvailabilityError) {
-      console.warn(`[Gemini Fallback] El modelo '${model}' falló (${errorMessage}). Reintentando con 'gemini-3.5-flash'...`);
-      return sendMessage({
-        userInput: textToSend,
-        image,
-        systemPrompt,
-        history,
-        philosopherId,
-        model: 'gemini-3.5-flash',
+  for (const model of modelsToTry) {
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        config: {
+          temperature: 0.5,
+          maxOutputTokens: 700,
+        },
       });
-    }
 
-    if (model === 'gemini-3.5-flash' && isAvailabilityError) {
-      console.warn(`[Gemini Fallback Secundario] Reintentando con 'gemini-2.0-flash'...`);
-      return sendMessage({
-        userInput: textToSend,
-        image,
-        systemPrompt,
-        history,
-        philosopherId,
-        model: 'gemini-2.0-flash',
-      });
+      const text = response.text?.trim();
+      if (text) {
+        return text;
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`[inspectConcept] Error con modelo '${model}':`, err.message || err);
     }
-
-    // Mapeo de errores amigables para la UI
-    let userFriendlyMessage = 'Error al comunicarse con Gemini.';
-    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401') || errorMessage.includes('403')) {
-      userFriendlyMessage = 'API Key inválida o sin permisos. Revisa tu VITE_GEMINI_API_KEY en .env.';
-    } else if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-      userFriendlyMessage = 'Límite de cuota alcanzado (Error 429). Espera unos segundos e intenta nuevamente.';
-    } else if (errorMessage.includes('503') || errorMessage.includes('UNAVAILABLE')) {
-      userFriendlyMessage = 'Servidor temporalmente sobrecargado (Error 503). Intenta de nuevo en unos momentos.';
-    } else if (errorMessage.includes('404') || errorMessage.includes('not found')) {
-      userFriendlyMessage = `El modelo '${model}' no está disponible (Error 404).`;
-    } else if (errorMessage) {
-      userFriendlyMessage = `Error de Gemini: ${errorMessage}`;
-    }
-
-    const enhancedError = new Error(userFriendlyMessage);
-    enhancedError.originalError = error;
-    throw enhancedError;
   }
+
+  throw lastError || new Error(`No fue posible consultar el concepto '${cleanWord}'.`);
 };
 
 export const sendPhilosophicalTurn = sendMessage;

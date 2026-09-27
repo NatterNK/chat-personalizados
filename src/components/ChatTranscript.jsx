@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX, Copy, Check } from 'lucide-react';
-import { PhilosopherAvatar } from './PhilosopherAvatar';
+import { Copy, Check, Volume2, VolumeX, Sparkles, User, ShieldAlert } from 'lucide-react';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 export const ChatTranscript = ({
   messages = [],
-  character,
   isProcessing = false,
   isSpeaking = false,
   speakingMessageId = null,
@@ -31,9 +30,8 @@ export const ChatTranscript = ({
   };
 
   return (
-    <div className="flex-1 min-h-0 w-full overflow-y-auto px-3 sm:px-6 py-4 rounded-2xl bg-[#0e1217]/80 border border-[#1e2633] shadow-inner custom-scrollbar select-text">
+    <div className="flex-1 min-h-0 w-full overflow-y-auto px-3 sm:px-6 py-4 rounded-2xl bg-[#0b0e14]/90 border border-[#1e2633] shadow-inner custom-scrollbar select-text">
       <div className="max-w-4xl mx-auto space-y-4">
-        
         {/* Lista de Mensajes */}
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
@@ -42,32 +40,44 @@ export const ChatTranscript = ({
           return (
             <div
               key={msg.id}
-              className={`flex items-start gap-3.5 w-full ${
+              className={`flex items-start gap-3 w-full ${
                 isUser ? 'justify-end' : 'justify-start'
               } animate-fadeIn`}
             >
-              {/* Avatar Personaje Tipográfico / Iconográfico */}
+              {/* Avatar Discreto */}
               {!isUser && (
-                <PhilosopherAvatar character={character} size="sm" className="mt-0.5 shadow-sm" />
+                <div className="w-8 h-8 rounded-xl bg-[#162338] border border-[#1f6feb]/50 flex items-center justify-center text-xs font-mono text-[#58a6ff] shrink-0 mt-1 shadow-sm">
+                  ⚡
+                </div>
               )}
 
               {/* Burbuja del Mensaje */}
               <div
-                className={`group relative max-w-[88%] sm:max-w-[82%] rounded-2xl p-4 transition-all duration-200 shadow-md select-text ${
+                className={`group relative max-w-[92%] sm:max-w-[85%] rounded-2xl p-4 transition-all duration-200 shadow-md select-text ${
                   isUser
-                    ? 'bg-[#1a2b47] border border-[#1f6feb]/50 text-blue-50 rounded-tr-sm ml-6'
-                    : `bg-[#161b22] border ${
+                    ? 'bg-[#18263d] border border-[#1f6feb]/40 text-blue-50 rounded-tr-sm ml-4 sm:ml-8'
+                    : `bg-[#12161f] border ${
                         isCurrentSpeaking
                           ? 'border-[#58a6ff] ring-1 ring-[#58a6ff]/40 shadow-lg shadow-[#1f6feb]/10'
-                          : 'border-[#30363d]'
-                      } text-zinc-200 rounded-tl-sm mr-6`
+                          : 'border-[#21262d]'
+                      } text-zinc-100 rounded-tl-sm mr-4 sm:mr-8`
                 }`}
               >
                 {/* Header del Mensaje */}
-                <div className="flex items-center justify-between gap-3 mb-1.5 text-[11px] text-zinc-400 font-medium select-none">
-                  <span className="font-mono">
-                    {isUser ? 'TÚ' : character?.name?.toUpperCase()}
-                  </span>
+                <div className="flex items-center justify-between gap-3 mb-2 text-[11px] text-zinc-400 font-medium select-none border-b border-white/5 pb-1.5">
+                  <div className="flex items-center gap-1.5 font-mono">
+                    {isUser ? (
+                      <>
+                        <User className="w-3 h-3 text-[#58a6ff]" />
+                        <span className="text-[#58a6ff] font-semibold">TÚ</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-amber-400 font-bold">⚡</span>
+                        <span className="text-zinc-200 font-bold tracking-wider">SPARRING INTELECTUAL</span>
+                      </>
+                    )}
+                  </div>
                   <span className="font-mono text-[10px] text-zinc-500">
                     {msg.timestamp || 'AHORA'}
                   </span>
@@ -75,28 +85,29 @@ export const ChatTranscript = ({
 
                 {/* Imagen adjunta en el mensaje si existe */}
                 {msg.image && (
-                  <div className="mb-2.5 rounded-xl overflow-hidden border border-[#30363d] max-w-xs shadow-md bg-black/30 select-none">
+                  <div className="mb-3 rounded-xl overflow-hidden border border-[#30363d] max-w-sm shadow-md bg-black/40 select-none">
                     <img
                       src={msg.image}
                       alt="Imagen adjunta"
-                      className="w-full h-auto max-h-64 object-contain rounded-lg"
+                      className="w-full h-auto max-h-72 object-contain rounded-lg"
                     />
                   </div>
                 )}
 
-                {/* Texto con wrap y saltos de línea perfectos */}
+                {/* Contenido con Renderizado Markdown */}
                 {msg.text && (
-                  <div className="text-sm sm:text-[15px] leading-relaxed break-words whitespace-pre-wrap font-sans text-zinc-100 select-text cursor-text">
-                    {msg.text}
+                  <div className="text-xs sm:text-[14.5px] leading-relaxed break-words font-sans text-zinc-100 select-text cursor-text">
+                    <MarkdownRenderer content={msg.text} />
                   </div>
                 )}
 
-                {/* Acciones para Mensajes del Personaje */}
-                {!isUser && msg.text && (
-                  <div className="mt-3 pt-2.5 border-t border-[#30363d]/60 flex items-center justify-end gap-2 text-xs">
+                {/* Acciones de Mensaje */}
+                {msg.text && (
+                  <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-end gap-1.5 text-xs select-none">
                     <button
+                      type="button"
                       onClick={() => handleCopy(msg.id, msg.text)}
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-[#21262d] transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22] transition-colors cursor-pointer"
                       title="Copiar texto"
                     >
                       {copiedId === msg.id ? (
@@ -106,56 +117,61 @@ export const ChatTranscript = ({
                       )}
                     </button>
 
-                    <button
-                      onClick={() => onReplayAudio && onReplayAudio(msg)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
-                        isCurrentSpeaking
-                          ? 'bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 shadow-sm font-semibold'
-                          : 'text-zinc-400 hover:text-[#58a6ff] hover:bg-[#21262d]'
-                      }`}
-                      title={isCurrentSpeaking ? 'Detener reproducción de audio' : 'Escuchar con voz sintetizada'}
-                    >
-                      <Volume2 className={`w-3.5 h-3.5 ${isCurrentSpeaking ? 'text-[#58a6ff] animate-pulse' : ''}`} />
-                      <span className="text-[11px]">{isCurrentSpeaking ? 'Detener' : 'Escuchar'}</span>
-                    </button>
+                    {!isUser && onReplayAudio && (
+                      <button
+                        type="button"
+                        onClick={() => onReplayAudio(msg)}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          isCurrentSpeaking
+                            ? 'text-[#58a6ff] bg-[#162338]'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22]'
+                        }`}
+                        title="Escuchar réplica en voz alta"
+                      >
+                        {isCurrentSpeaking ? (
+                          <VolumeX className="w-3.5 h-3.5 animate-pulse text-[#58a6ff]" />
+                        ) : (
+                          <Volume2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Avatar Usuario */}
               {isUser && (
-                <div className="w-9 h-9 rounded-xl bg-[#1f6feb]/20 border border-[#1f6feb]/40 flex items-center justify-center text-[#58a6ff] text-xs font-mono font-bold shrink-0 shadow-sm mt-0.5">
-                  TÚ
+                <div className="w-8 h-8 rounded-xl bg-[#1e2633] border border-[#30363d] flex items-center justify-center text-xs font-mono text-zinc-400 shrink-0 mt-1 shadow-sm">
+                  <User className="w-4 h-4 text-zinc-300" />
                 </div>
               )}
             </div>
           );
         })}
 
-        {/* Transcripción en vivo mientras el usuario habla por micrófono */}
+        {/* Transcripción provisional en vivo de la voz del usuario */}
         {interimTranscript && (
-          <div className="flex items-start gap-3 w-full justify-end animate-fadeIn">
-            <div className="bg-[#1f6feb]/10 border border-dashed border-[#1f6feb]/50 text-blue-200 rounded-2xl rounded-tr-sm p-3.5 max-w-[82%] flex items-center gap-2.5">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
-              <span className="text-sm font-sans italic break-words">"{interimTranscript}..."</span>
+          <div className="flex items-start justify-end gap-3 w-full animate-fadeIn">
+            <div className="max-w-[85%] rounded-2xl p-4 bg-[#18263d]/60 border border-[#1f6feb]/30 text-blue-200 italic rounded-tr-sm ml-8 text-xs sm:text-sm">
+              <span className="font-mono text-[10px] text-[#58a6ff] block mb-1">VOZ EN DIRECTO...</span>
+              {interimTranscript}
             </div>
           </div>
         )}
 
-        {/* Indicador de carga / Pensando con avatar del pensador */}
+        {/* Indicador sutil de respuesta en progreso */}
         {isProcessing && (
-          <div className="flex items-center gap-3 w-full justify-start animate-fadeIn">
-            <PhilosopherAvatar character={character} size="sm" />
-            <div className="px-4 py-2.5 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-              <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-              <div className="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-bounce"></div>
+          <div className="flex items-start gap-3 w-full animate-fadeIn select-none">
+            <div className="w-8 h-8 rounded-xl bg-[#162338] border border-[#1f6feb]/50 flex items-center justify-center text-xs font-mono text-[#58a6ff] shrink-0 mt-1">
+              ⚡
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-[#12161f] border border-[#21262d] text-zinc-400 rounded-tl-sm flex items-center gap-2.5 shadow-sm text-xs font-sans">
+              <div className="w-4 h-4 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin shrink-0" />
+              <span>El Sparring está articulando una réplica con rigor dialéctico...</span>
             </div>
           </div>
         )}
 
-        {/* Elemento ancla para auto-scroll suave */}
-        <div ref={messagesEndRef} className="h-0 w-0" />
+        <div ref={messagesEndRef} />
       </div>
     </div>
   );
