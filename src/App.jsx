@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   BookOpen,
+  Volume2,
+  VolumeX,
   AlertTriangle,
 } from 'lucide-react';
 import { ThreadTabs } from './components/ThreadTabs';
 import { ChatTranscript } from './components/ChatTranscript';
 import { MessageInputBar } from './components/MessageInputBar';
 import { ConceptInspectorModal } from './components/ConceptInspectorModal';
+import { VoiceSettingsModal } from './components/VoiceSettingsModal';
 import {
   getThreads,
   getActiveThreadId,
@@ -20,13 +23,13 @@ import { sendMessage, getApiKey } from './services/gemini';
 import {
   SpeechRecognizer,
   isSpeechRecognitionSupported,
-  speakPhilosopherText,
-  cancelSpeech,
 } from './services/speech';
 import {
-  playNeuralVoice,
-  stopNeuralAudio,
-} from './services/neuralAudio';
+  getSpeechSettings,
+  saveSpeechSettings,
+  speakText,
+  cancelSpeech,
+} from './services/speechService';
 
 export default function App() {
   // Estado de hilos temáticos persistentes
@@ -46,17 +49,12 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [prefilledInput, setPrefilledInput] = useState('');
 
-  // Modal de Inspector de Conceptos
+  // Modales
   const [isConceptModalOpen, setIsConceptModalOpen] = useState(false);
+  const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
 
-  // Auto-speak opcional
-  const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('app_auto_speak_enabled') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
+  // Configuración de Voz Persistente (localStorage: 'speech_settings')
+  const [speechSettings, setSpeechSettings] = useState(() => getSpeechSettings());
 
   const recognizerRef = useRef(null);
   const currentThreadRef = useRef(currentThread);
@@ -67,7 +65,6 @@ export default function App() {
 
   // Selección de hilo
   const handleSelectThread = useCallback((threadId) => {
-    stopNeuralAudio();
     cancelSpeech();
     setSpeakingMessageId(null);
     setActiveThreadIdState(threadId);
@@ -77,8 +74,8 @@ export default function App() {
 
   // Crear nuevo hilo
   const handleCreateThread = useCallback((title) => {
-    stopNeuralAudio();
     cancelSpeech();
+    setSpeakingMessageId(null);
     const { newThread, threads: updatedList } = createNewThread(title);
     setThreads(updatedList);
     setActiveThreadIdState(newThread.id);
@@ -93,22 +90,19 @@ export default function App() {
 
   // Eliminar hilo
   const handleDeleteThread = useCallback((threadId) => {
-    stopNeuralAudio();
     cancelSpeech();
+    setSpeakingMessageId(null);
     const { threads: updated, activeId } = deleteThread(threadId);
     setThreads(updated);
     setActiveThreadIdState(activeId);
   }, []);
 
-  // Toggle de auto-lectura por voz
+  // Toggle rápido de auto-lectura por voz
   const handleToggleAutoSpeak = useCallback(() => {
-    setAutoSpeakEnabled((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('app_auto_speak_enabled', String(next));
-      } catch (e) {}
-      if (!next) {
-        stopNeuralAudio();
+    setSpeechSettings((prev) => {
+      const next = { ...prev, autoSpeak: !prev.autoSpeak };
+      saveSpeechSettings(next);
+      if (!next.autoSpeak) {
         cancelSpeech();
         setSpeakingMessageId(null);
       }
@@ -116,37 +110,28 @@ export default function App() {
     });
   }, []);
 
-  // Reproducir mensaje específico por voz
-  const handleReplayAudio = useCallback(async (message) => {
+  // Reproducir o detener mensaje específico por voz
+  const handleReplayAudio = useCallback((message) => {
     if (!message?.text) return;
 
+    // Si ya se está reproduciendo este mensaje, detenerlo inmediatamente
     if (speakingMessageId === message.id) {
-      stopNeuralAudio();
       cancelSpeech();
       setSpeakingMessageId(null);
       return;
     }
 
-    stopNeuralAudio();
+    // Cancelar cualquier locución anterior e iniciar la nueva
     cancelSpeech();
     setSpeakingMessageId(message.id);
 
-    try {
-      await playNeuralVoice({
-        text: message.text,
-        voice: 'es-ES-AlvaroNeural',
-        onEnd: () => setSpeakingMessageId(null),
-      });
-    } catch (e) {
-      // Fallback a speech synthesis de navegador
-      speakPhilosopherText({
-        text: message.text,
-        lang: 'es-ES',
-        onEnd: () => setSpeakingMessageId(null),
-        onError: () => setSpeakingMessageId(null),
-      });
-    }
-  }, [speakingMessageId]);
+    speakText(message.text, {
+      customSettings: speechSettings,
+      onStart: () => setSpeakingMessageId(message.id),
+      onEnd: () => setSpeakingMessageId(null),
+      onError: () => setSpeakingMessageId(null),
+    });
+  }, [speakingMessageId, speechSettings]);
 
   // Enviar mensaje al Sparring Intelectual
   const handleSendMessage = async (textToSend, attachedImage = null) => {
@@ -191,8 +176,8 @@ export default function App() {
       const finalUpdated = addMessageToThread(targetThreadId, modelMsg);
       setThreads(finalUpdated);
 
-      // Auto-lectura si está activada
-      if (autoSpeakEnabled) {
+      // 3. Gatillo de lectura automática si está activado
+      if (speechSettings.autoSpeak) {
         handleReplayAudio(modelMsg);
       }
     } catch (err) {
@@ -279,6 +264,25 @@ export default function App() {
 
         {/* Acciones del Header */}
         <div className="flex items-center gap-2">
+          {/* Botón de Configuración de Voz */}
+          <button
+            type="button"
+            onClick={() => setIsVoiceSettingsOpen(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+              speechSettings.autoSpeak
+                ? 'bg-[#162338] border-[#1f6feb] text-[#58a6ff]'
+                : 'bg-[#161b22] hover:bg-[#21262d] border-[#30363d] text-zinc-300 hover:text-white'
+            }`}
+            title="Configuración de Voz (Text-to-Speech)"
+          >
+            {speechSettings.autoSpeak ? (
+              <Volume2 className="w-3.5 h-3.5 text-[#58a6ff]" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
+            )}
+            <span className="hidden sm:inline">Voz</span>
+          </button>
+
           {/* Botón rápido del Inspector de Conceptos */}
           <button
             type="button"
@@ -344,7 +348,7 @@ export default function App() {
             onToggleListen={handleToggleListen}
             onSendMessage={handleSendMessage}
             onOpenConceptInspector={() => setIsConceptModalOpen(true)}
-            autoSpeakEnabled={autoSpeakEnabled}
+            autoSpeakEnabled={speechSettings.autoSpeak}
             onToggleAutoSpeak={handleToggleAutoSpeak}
             isSttSupported={isSpeechRecognitionSupported()}
             externalInput={prefilledInput}
@@ -353,11 +357,17 @@ export default function App() {
         </div>
       </main>
 
-      {/* 5. Modal Inspector de Conceptos */}
+      {/* 5. Modales */}
       <ConceptInspectorModal
         isOpen={isConceptModalOpen}
         onClose={() => setIsConceptModalOpen(false)}
         onInsertIntoChat={(text) => setPrefilledInput(text)}
+      />
+
+      <VoiceSettingsModal
+        isOpen={isVoiceSettingsOpen}
+        onClose={() => setIsVoiceSettingsOpen(false)}
+        onSettingsChange={(newSettings) => setSpeechSettings(newSettings)}
       />
     </div>
   );

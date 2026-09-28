@@ -9,9 +9,10 @@
  * - Evita que la voz suene atropellada a velocidades altas.
  */
 export const cleanTextForSpeech = (text = '') => {
-  if (!text) return '';
+  const safeText = typeof text === 'string' ? text : (text?.text || String(text || ''));
+  if (!safeText) return '';
 
-  let cleaned = text
+  let cleaned = safeText
     // 1. Eliminar bloques de código markdown (```...```)
     .replace(/```[\s\S]*?```/g, ' ')
     // 2. Eliminar código inline (`...`)

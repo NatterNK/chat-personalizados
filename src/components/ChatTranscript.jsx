@@ -121,17 +121,23 @@ export const ChatTranscript = ({
                       <button
                         type="button"
                         onClick={() => onReplayAudio(msg)}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer shadow-sm ${
                           isCurrentSpeaking
-                            ? 'text-[#58a6ff] bg-[#162338]'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161b22]'
+                            ? 'bg-red-950/70 border border-red-500/60 text-red-200 animate-pulse ring-1 ring-red-400/40'
+                            : 'bg-[#161b22] hover:bg-[#21262d] border border-[#30363d] text-zinc-300 hover:text-white'
                         }`}
-                        title="Escuchar réplica en voz alta"
+                        title={isCurrentSpeaking ? 'Detener locución' : 'Escuchar mensaje en voz alta'}
                       >
                         {isCurrentSpeaking ? (
-                          <VolumeX className="w-3.5 h-3.5 animate-pulse text-[#58a6ff]" />
+                          <>
+                            <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                            <span>Detener</span>
+                          </>
                         ) : (
-                          <Volume2 className="w-3.5 h-3.5" />
+                          <>
+                            <Volume2 className="w-3.5 h-3.5 text-[#58a6ff]" />
+                            <span>Escuchar</span>
+                          </>
                         )}
                       </button>
                     )}
