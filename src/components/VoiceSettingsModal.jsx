@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, X, Play, Square, Settings, Check } from 'lucide-react';
+import { Volume2, VolumeX, X, Play, Square, Settings, Check, Sparkles } from 'lucide-react';
 import {
   getSpanishVoices,
   getSpeechSettings,
   saveSpeechSettings,
+  playNeuralVoice,
   speakText,
-  cancelSpeech,
+  stopAllAudio,
 } from '../services/speechService';
 
 const SAMPLE_PHRASE =
@@ -31,7 +32,7 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
         window.speechSynthesis.onvoiceschanged = loadVoices;
       }
     } else {
-      cancelSpeech();
+      stopAllAudio();
       setIsPlayingSample(false);
     }
   }, [isOpen]);
@@ -54,20 +55,37 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
     onSettingsChange?.(next);
   };
 
-  const handleTestVoice = () => {
+  const handleTestVoice = async () => {
     if (isPlayingSample) {
-      cancelSpeech();
+      stopAllAudio();
       setIsPlayingSample(false);
       return;
     }
 
     setIsPlayingSample(true);
-    speakText(SAMPLE_PHRASE, {
-      customSettings: settings,
-      onStart: () => setIsPlayingSample(true),
-      onEnd: () => setIsPlayingSample(false),
-      onError: () => setIsPlayingSample(false),
-    });
+
+    try {
+      if (settings.useNeuralVoice !== false) {
+        await playNeuralVoice(SAMPLE_PHRASE, {
+          voice: settings.voiceURI || 'es-ES-AlvaroNeural',
+          rate: '-10%',
+          pitch: '-5Hz',
+          onStart: () => setIsPlayingSample(true),
+          onEnd: () => setIsPlayingSample(false),
+          onError: () => setIsPlayingSample(false),
+        });
+      } else {
+        speakText(SAMPLE_PHRASE, {
+          customSettings: settings,
+          onStart: () => setIsPlayingSample(true),
+          onEnd: () => setIsPlayingSample(false),
+          onError: () => setIsPlayingSample(false),
+        });
+      }
+    } catch (err) {
+      console.warn('Error al probar voz:', err);
+      setIsPlayingSample(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -83,11 +101,16 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
               <Volume2 className="w-5 h-5 text-[#58a6ff]" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Configuración de Voz (TTS)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                  Configuración de Audio
+                </h3>
+                <span className="text-[10px] font-mono font-bold bg-[#1f6feb]/20 text-[#58a6ff] px-2 py-0.5 rounded-full border border-[#1f6feb]/40 uppercase">
+                  Voz Neural
+                </span>
+              </div>
               <p className="text-xs text-zinc-400">
-                Ajustes de locución, velocidad y lectura automática
+                Narrador reflexivo solemne (Microsoft Edge-TTS) y Web Speech
               </p>
             </div>
           </div>
@@ -103,31 +126,52 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
         </div>
 
         {/* Contenido / Opciones de Configuración */}
-        <div className="p-5 sm:p-6 space-y-6 overflow-y-auto custom-scrollbar">
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto custom-scrollbar">
           
-          {/* 1. Selector de Voz en Español */}
+          {/* Tarjeta Destacada: Voz Neural Solemne */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#162338] to-[#12161f] border border-[#1f6feb]/40 space-y-2.5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-mono font-bold text-blue-200 uppercase">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>NARRADOR SOLEMNE RECOMENDADO</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40">
+                Azure Neural
+              </span>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed font-sans">
+              <strong>Álvaro Neural (España)</strong> con pitch de <span className="font-mono text-[#58a6ff]">-5Hz</span> y velocidad de <span className="font-mono text-[#58a6ff]">-10%</span> para un tono grave, reposado y académico de narrador de ensayo.
+            </p>
+          </div>
+
+          {/* 1. Selector de Voz */}
           <div className="space-y-2">
             <label className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider block">
-              Voz del Navegador (Español)
+              Voz del Narrador
             </label>
             <select
-              value={settings.voiceURI}
+              value={settings.voiceURI || 'es-ES-AlvaroNeural'}
               onChange={(e) => updateSetting('voiceURI', e.target.value)}
               className="w-full bg-[#161b22] border border-[#30363d] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-100 focus:outline-none focus:border-[#58a6ff] cursor-pointer font-sans"
             >
-              <option value="">Predeterminada del sistema (Automática)</option>
+              <option value="es-ES-AlvaroNeural">
+                ⚡ Álvaro Neural (Grave & Solemne - Recomendado)
+              </option>
+              <option value="es-MX-JorgeNeural">
+                ⚡ Jorge Neural (México - Cálido)
+              </option>
+              <option value="es-ES-ElviraNeural">
+                ⚡ Elvira Neural (España - Femenina Solemne)
+              </option>
               {voices.map((v) => (
                 <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
                   {v.name} ({v.lang}) {v.localService ? '• Local' : '• Red'}
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-zinc-500">
-              {voices.length} {voices.length === 1 ? 'voz detectada' : 'voces detectadas'} en español en este dispositivo.
-            </p>
           </div>
 
-          {/* 2. Slider de Velocidad (Rate) */}
+          {/* 2. Slider de Velocidad */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">
               <span>Velocidad de Lectura</span>
@@ -138,16 +182,16 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
             <input
               type="range"
               min="0.8"
-              max="1.4"
+              max="1.3"
               step="0.05"
               value={settings.rate}
               onChange={(e) => updateSetting('rate', parseFloat(e.target.value))}
               className="w-full accent-[#1f6feb] cursor-pointer"
             />
             <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500">
-              <span>0.8x (Pausado)</span>
-              <span>1.0x (Normal)</span>
-              <span>1.4x (Dinámico)</span>
+              <span>0.8x (Reflexivo)</span>
+              <span>1.0x (Estándar)</span>
+              <span>1.3x (Dinámico)</span>
             </div>
           </div>
 
@@ -155,10 +199,10 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
           <div className="p-3.5 rounded-2xl bg-[#12161f] border border-[#21262d] flex items-center justify-between gap-3">
             <div className="space-y-0.5">
               <span className="text-xs sm:text-sm font-semibold text-white block">
-                Lectura automática
+                Lectura automática (AutoSpeak)
               </span>
               <span className="text-[11px] text-zinc-400 block leading-tight">
-                Reproducir en voz alta cada nueva réplica generada por el Sparring
+                Reproducir con voz neural cada nueva réplica generada por el Sparring
               </span>
             </div>
 
@@ -185,7 +229,7 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
               }`}
             >
               {isPlayingSample ? <Square className="w-4 h-4 text-red-400 fill-current" /> : <Play className="w-4 h-4 text-[#58a6ff] fill-current" />}
-              <span>{isPlayingSample ? 'Detener muestra' : 'Probar voz'}</span>
+              <span>{isPlayingSample ? 'Detener muestra' : 'Probar voz neural'}</span>
             </button>
 
             <button

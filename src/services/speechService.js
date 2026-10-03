@@ -5,10 +5,72 @@ export { cleanTextForSpeech };
 export const SPEECH_SETTINGS_KEY = 'speech_settings';
 
 const DEFAULT_SETTINGS = {
-  voiceURI: '',
+  voiceURI: 'es-ES-AlvaroNeural', // Voz neural solemne por defecto
   rate: 1.0,
   pitch: 1.0,
   autoSpeak: false,
+  useNeuralVoice: true, // Voz neural de Microsoft Edge-TTS
+};
+
+/**
+ * Control del reproductor de audio HTML5 para Voz Neural
+ */
+let currentAudioInstance = null;
+let currentBlobUrl = null;
+let playSessionCounter = 0;
+
+/**
+ * Detiene cualquier audio en reproducción (tanto Voz Neural como Web Speech Synthesis)
+ */
+export const stopAllAudio = () => {
+  playSessionCounter++;
+
+  if (currentAudioInstance) {
+    try {
+      currentAudioInstance.pause();
+      currentAudioInstance.currentTime = 0;
+      currentAudioInstance.src = '';
+    } catch (e) {}
+    currentAudioInstance = null;
+  }
+
+  if (currentBlobUrl) {
+    try {
+      URL.revokeObjectURL(currentBlobUrl);
+    } catch (e) {}
+    currentBlobUrl = null;
+  }
+
+  cancelSpeech();
+};
+
+/**
+ * Pausa la locución neural actual
+ */
+export const pauseNeuralVoice = () => {
+  if (currentAudioInstance && !currentAudioInstance.paused) {
+    try {
+      currentAudioInstance.pause();
+    } catch (e) {}
+  }
+};
+
+/**
+ * Reanuda la locución neural pausada
+ */
+export const resumeNeuralVoice = () => {
+  if (currentAudioInstance && currentAudioInstance.paused) {
+    try {
+      currentAudioInstance.play();
+    } catch (e) {}
+  }
+};
+
+/**
+ * Verifica si hay audio neural sonando actualmente
+ */
+export const isNeuralAudioPlaying = () => {
+  return Boolean(currentAudioInstance && !currentAudioInstance.paused && !currentAudioInstance.ended);
 };
 
 /**
@@ -102,19 +164,17 @@ export const getActiveVoice = (voiceURI = null) => {
     if (match) return match;
   }
 
-  // Si no hay seleccionada, priorizar voces que contengan 'natural', 'neural' o 'google'
   const natural = spanish.find((v) => {
     const n = v.name.toLowerCase();
     return n.includes('natural') || n.includes('neural') || n.includes('google');
   });
   if (natural) return natural;
 
-  // Si no, la primera disponible en español
   return spanish[0];
 };
 
 /**
- * Cancela de inmediato cualquier locución en curso
+ * Cancela de inmediato cualquier locución en curso en Web Speech API
  */
 export const cancelSpeech = () => {
   if (isSpeechSynthesisSupported()) {
@@ -127,7 +187,7 @@ export const cancelSpeech = () => {
 };
 
 /**
- * Sintetiza un texto a voz utilizando Web Speech API con limpieza de Markdown y parámetros configurados
+ * Sintetiza un texto a voz utilizando Web Speech API nativa
  */
 export const speakText = (
   text = '',
@@ -143,10 +203,8 @@ export const speakText = (
     return null;
   }
 
-  // Cancelar locución previa
   cancelSpeech();
 
-  // Limpiar texto para evitar que se pronuncien símbolos de Markdown o código
   const clean = cleanTextForSpeech(text);
   if (!clean) {
     onEnd();
@@ -190,6 +248,117 @@ export const speakText = (
   } catch (e) {
     console.error('[speechService] Excepción al invocar window.speechSynthesis.speak:', e);
     onError(e);
+    return null;
+  }
+};
+
+/**
+ * Reproducción de Voz Neuronal de Microsoft (Edge-TTS / es-ES-AlvaroNeural)
+ * Realiza fetch a /api/tts, crea Blob de audio MP3 y reproduce con new Audio()
+ * Incluye fallback automático a Web Speech API en caso de desconexión o fallo de servidor
+ */
+export const playNeuralVoice = async (
+  text = '',
+  {
+    voice = 'es-ES-AlvaroNeural',
+    rate = '-10%',
+    pitch = '-5Hz',
+    onStart = () => {},
+    onEnd = () => {},
+    onError = () => {},
+  } = {}
+) => {
+  // Limpiar cualquier audio previo
+  stopAllAudio();
+  const sessionId = playSessionCounter;
+
+  const clean = cleanTextForSpeech(text);
+  if (!clean) {
+    onEnd();
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch('/api/tts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: clean,
+        voice,
+        rate,
+        pitch,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutTimer);
+
+    // Si otra reproducción se inició mientras se recibía la respuesta, descartar
+    if (sessionId !== playSessionCounter) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`TTS serverless endpoint respondió con código HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    if (!blob || blob.size === 0) {
+      throw new Error('Blob de audio vacío recibido del servidor.');
+    }
+
+    if (sessionId !== playSessionCounter) {
+      return null;
+    }
+
+    const audioUrl = URL.createObjectURL(blob);
+    currentBlobUrl = audioUrl;
+
+    const audio = new Audio(audioUrl);
+    currentAudioInstance = audio;
+
+    audio.onplay = () => {
+      if (sessionId === playSessionCounter) {
+        onStart();
+      }
+    };
+
+    audio.onended = () => {
+      if (sessionId === playSessionCounter) {
+        stopAllAudio();
+        onEnd();
+      }
+    };
+
+    audio.onerror = (err) => {
+      console.warn('[Neural Audio Error -> Activando fallback nativo WebSpeech]:', err);
+      if (sessionId === playSessionCounter) {
+        stopAllAudio();
+        speakText(clean, {
+          onStart,
+          onEnd,
+          onError,
+        });
+      }
+    };
+
+    await audio.play();
+    return audio;
+  } catch (err) {
+    console.warn('[Neural TTS Fetch Error -> Activando fallback nativo WebSpeech]:', err.message || err);
+    if (sessionId === playSessionCounter) {
+      stopAllAudio();
+      return speakText(clean, {
+        onStart,
+        onEnd,
+        onError,
+      });
+    }
     return null;
   }
 };

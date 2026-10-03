@@ -29,6 +29,8 @@ import {
   saveSpeechSettings,
   speakText,
   cancelSpeech,
+  playNeuralVoice,
+  stopAllAudio,
 } from './services/speechService';
 
 export default function App() {
@@ -65,7 +67,7 @@ export default function App() {
 
   // Selección de hilo
   const handleSelectThread = useCallback((threadId) => {
-    cancelSpeech();
+    stopAllAudio();
     setSpeakingMessageId(null);
     setActiveThreadIdState(threadId);
     setActiveThreadId(threadId);
@@ -74,7 +76,7 @@ export default function App() {
 
   // Crear nuevo hilo
   const handleCreateThread = useCallback((title) => {
-    cancelSpeech();
+    stopAllAudio();
     setSpeakingMessageId(null);
     const { newThread, threads: updatedList } = createNewThread(title);
     setThreads(updatedList);
@@ -90,7 +92,7 @@ export default function App() {
 
   // Eliminar hilo
   const handleDeleteThread = useCallback((threadId) => {
-    cancelSpeech();
+    stopAllAudio();
     setSpeakingMessageId(null);
     const { threads: updated, activeId } = deleteThread(threadId);
     setThreads(updated);
@@ -103,34 +105,41 @@ export default function App() {
       const next = { ...prev, autoSpeak: !prev.autoSpeak };
       saveSpeechSettings(next);
       if (!next.autoSpeak) {
-        cancelSpeech();
+        stopAllAudio();
         setSpeakingMessageId(null);
       }
       return next;
     });
   }, []);
 
-  // Reproducir o detener mensaje específico por voz
-  const handleReplayAudio = useCallback((message) => {
+  // Reproducir o detener mensaje específico con Voz Neural Solemne (Edge-TTS)
+  const handleReplayAudio = useCallback(async (message) => {
     if (!message?.text) return;
 
     // Si ya se está reproduciendo este mensaje, detenerlo inmediatamente
     if (speakingMessageId === message.id) {
-      cancelSpeech();
+      stopAllAudio();
       setSpeakingMessageId(null);
       return;
     }
 
-    // Cancelar cualquier locución anterior e iniciar la nueva
-    cancelSpeech();
+    // Cancelar cualquier locución anterior e iniciar la nueva voz neural
+    stopAllAudio();
     setSpeakingMessageId(message.id);
 
-    speakText(message.text, {
-      customSettings: speechSettings,
-      onStart: () => setSpeakingMessageId(message.id),
-      onEnd: () => setSpeakingMessageId(null),
-      onError: () => setSpeakingMessageId(null),
-    });
+    try {
+      await playNeuralVoice(message.text, {
+        voice: speechSettings.voiceURI || 'es-ES-AlvaroNeural',
+        rate: '-10%',
+        pitch: '-5Hz',
+        onStart: () => setSpeakingMessageId(message.id),
+        onEnd: () => setSpeakingMessageId(null),
+        onError: () => setSpeakingMessageId(null),
+      });
+    } catch (e) {
+      console.warn('Fallo en playNeuralVoice:', e);
+      setSpeakingMessageId(null);
+    }
   }, [speakingMessageId, speechSettings]);
 
   // Enviar mensaje al Sparring Intelectual

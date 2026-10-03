@@ -77,6 +77,13 @@ export const ChatTranscript = ({
                         <span className="text-zinc-200 font-bold tracking-wider">SPARRING INTELECTUAL</span>
                       </>
                     )}
+                    {/* Indicador de narrador en vivo si está hablando */}
+                    {!isUser && isCurrentSpeaking && (
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-red-950/60 border border-red-500/40 text-red-300 animate-pulse flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                        Narrador en vivo
+                      </span>
+                    )}
                   </div>
                   <span className="font-mono text-[10px] text-zinc-500">
                     {msg.timestamp || 'AHORA'}
@@ -126,12 +133,17 @@ export const ChatTranscript = ({
                             ? 'bg-red-950/70 border border-red-500/60 text-red-200 animate-pulse ring-1 ring-red-400/40'
                             : 'bg-[#161b22] hover:bg-[#21262d] border border-[#30363d] text-zinc-300 hover:text-white'
                         }`}
-                        title={isCurrentSpeaking ? 'Detener locución' : 'Escuchar mensaje en voz alta'}
+                        title={isCurrentSpeaking ? 'Detener locución' : 'Escuchar mensaje en voz alta con narrador solemne'}
                       >
                         {isCurrentSpeaking ? (
                           <>
                             <VolumeX className="w-3.5 h-3.5 text-red-400" />
                             <span>Detener</span>
+                            <span className="flex items-center gap-0.5 ml-1">
+                              <span className="w-1 h-2.5 bg-red-400 animate-pulse rounded-full" />
+                              <span className="w-1 h-3.5 bg-red-300 animate-ping rounded-full" />
+                              <span className="w-1 h-2 bg-red-400 animate-pulse rounded-full" />
+                            </span>
                           </>
                         ) : (
                           <>

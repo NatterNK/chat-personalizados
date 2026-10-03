@@ -7,12 +7,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, voice = "es-ES-AlvaroNeural", rate = "0%", pitch = "0%" } = req.body || {};
+    const {
+      text,
+      voice = "es-ES-AlvaroNeural",
+      rate = "-10%",
+      pitch = "-5Hz",
+    } = req.body || {};
+
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'Valid text is required' });
     }
 
-    // Limpieza de caracteres y formato Markdown para locución limpia
+    // Limpieza rigurosa de caracteres y formato Markdown para locución fluida
     const cleanText = text
       .replace(/```[\s\S]*?```/g, ' ')
       .replace(/`([^`]+)`/g, '$1')

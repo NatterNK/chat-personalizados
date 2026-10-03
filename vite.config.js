@@ -22,7 +22,7 @@ const ttsDevPlugin = () => ({
       req.on('end', async () => {
         try {
           const parsed = body ? JSON.parse(body) : {};
-          const { text, voice = 'es-ES-AlvaroNeural', rate = '0%', pitch = '0%' } = parsed;
+          const { text, voice = 'es-ES-AlvaroNeural', rate = '-10%', pitch = '-5Hz' } = parsed;
 
           if (!text || typeof text !== 'string' || !text.trim()) {
             res.statusCode = 400;
