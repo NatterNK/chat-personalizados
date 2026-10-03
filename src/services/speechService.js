@@ -13,14 +13,16 @@ const DEFAULT_SETTINGS = {
 };
 
 /**
- * Control del reproductor de audio HTML5 para Voz Neural
+ * Control del reproductor de audio HTML5 para Voz Neural y Web Audio API
  */
 let currentAudioInstance = null;
 let currentBlobUrl = null;
+let currentAudioContext = null;
 let playSessionCounter = 0;
 
 /**
  * Detiene cualquier audio en reproducción (tanto Voz Neural como Web Speech Synthesis)
+ * y libera recursos de hardware/audio para no saturar memoria móvil.
  */
 export const stopAllAudio = () => {
   playSessionCounter++;
@@ -41,11 +43,20 @@ export const stopAllAudio = () => {
     currentBlobUrl = null;
   }
 
+  if (currentAudioContext) {
+    try {
+      if (currentAudioContext.state !== 'closed') {
+        currentAudioContext.close();
+      }
+    } catch (e) {}
+    currentAudioContext = null;
+  }
+
   cancelSpeech();
 };
 
 /**
- * Pausa la locución neural actual
+ * Pausa la locución neural actual y suspende el AudioContext
  */
 export const pauseNeuralVoice = () => {
   if (currentAudioInstance && !currentAudioInstance.paused) {
@@ -53,12 +64,22 @@ export const pauseNeuralVoice = () => {
       currentAudioInstance.pause();
     } catch (e) {}
   }
+  if (currentAudioContext && currentAudioContext.state === 'running') {
+    try {
+      currentAudioContext.suspend();
+    } catch (e) {}
+  }
 };
 
 /**
- * Reanuda la locución neural pausada
+ * Reanuda la locución neural pausada y reactiva el AudioContext
  */
 export const resumeNeuralVoice = () => {
+  if (currentAudioContext && currentAudioContext.state === 'suspended') {
+    try {
+      currentAudioContext.resume();
+    } catch (e) {}
+  }
   if (currentAudioInstance && currentAudioInstance.paused) {
     try {
       currentAudioInstance.play();
@@ -261,8 +282,8 @@ export const playNeuralVoice = async (
   text = '',
   {
     voice = 'es-ES-AlvaroNeural',
-    rate = '-10%',
-    pitch = '-5Hz',
+    rate = '-18%',
+    pitch = '-8Hz',
     onStart = () => {},
     onEnd = () => {},
     onError = () => {},
@@ -319,23 +340,47 @@ export const playNeuralVoice = async (
     const audioUrl = URL.createObjectURL(blob);
     currentBlobUrl = audioUrl;
 
-    const audio = new Audio(audioUrl);
-    currentAudioInstance = audio;
+    const audioElement = new Audio(audioUrl);
+    currentAudioInstance = audioElement;
 
-    audio.onplay = () => {
+    // Efecto de micrófono de estudio con Web Audio API:
+    // Filtro para inflar graves (Efecto de proximidad)
+    let audioCtx = null;
+    try {
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtxClass) {
+        audioCtx = new AudioCtxClass();
+        currentAudioContext = audioCtx;
+
+        const source = audioCtx.createMediaElementSource(audioElement);
+
+        // Filtro para inflar graves (Efecto de proximidad)
+        const bassBooster = audioCtx.createBiquadFilter();
+        bassBooster.type = "lowshelf";
+        bassBooster.frequency.value = 180;
+        bassBooster.gain.value = 6; // +6dB de calidez grave
+
+        source.connect(bassBooster);
+        bassBooster.connect(audioCtx.destination);
+      }
+    } catch (audioCtxErr) {
+      console.warn('[speechService] Error configurando filtro de micrófono de estudio:', audioCtxErr);
+    }
+
+    audioElement.onplay = () => {
       if (sessionId === playSessionCounter) {
         onStart();
       }
     };
 
-    audio.onended = () => {
+    audioElement.onended = () => {
       if (sessionId === playSessionCounter) {
         stopAllAudio();
         onEnd();
       }
     };
 
-    audio.onerror = (err) => {
+    audioElement.onerror = (err) => {
       console.warn('[Neural Audio Error -> Activando fallback nativo WebSpeech]:', err);
       if (sessionId === playSessionCounter) {
         stopAllAudio();
@@ -347,8 +392,14 @@ export const playNeuralVoice = async (
       }
     };
 
-    await audio.play();
-    return audio;
+    if (audioCtx && audioCtx.state === 'suspended') {
+      try {
+        await audioCtx.resume();
+      } catch (e) {}
+    }
+
+    await audioElement.play();
+    return audioElement;
   } catch (err) {
     console.warn('[Neural TTS Fetch Error -> Activando fallback nativo WebSpeech]:', err.message || err);
     if (sessionId === playSessionCounter) {

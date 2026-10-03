@@ -130,8 +130,8 @@ export default function App() {
     try {
       await playNeuralVoice(message.text, {
         voice: speechSettings.voiceURI || 'es-ES-AlvaroNeural',
-        rate: '-10%',
-        pitch: '-5Hz',
+        rate: '-18%',
+        pitch: '-8Hz',
         onStart: () => setSpeakingMessageId(message.id),
         onEnd: () => setSpeakingMessageId(null),
         onError: () => setSpeakingMessageId(null),

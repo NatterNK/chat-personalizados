@@ -22,7 +22,7 @@ const ttsDevPlugin = () => ({
       req.on('end', async () => {
         try {
           const parsed = body ? JSON.parse(body) : {};
-          const { text, voice = 'es-ES-AlvaroNeural', rate = '-10%', pitch = '-5Hz' } = parsed;
+          const { text, voice = 'es-ES-AlvaroNeural', rate = '-18%', pitch = '-8Hz' } = parsed;
 
           if (!text || typeof text !== 'string' || !text.trim()) {
             res.statusCode = 400;
@@ -48,8 +48,31 @@ const ttsDevPlugin = () => ({
             return;
           }
 
-          const tts = new MsEdgeTTS();
-          await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+          // Pausas dramáticas existenciales:
+          // - Puntos suspensivos: '... <break time="800ms"/>'
+          // - Puntos seguidos y aparte: '. <break time="650ms"/>'
+          // - Comas: ', <break time="320ms"/>'
+          const textWithBreaks = cleanText
+            .replace(/\.{3}|…/g, '... <break time="800ms"/>')
+            .replace(/\.([\s\n]+|$)/g, '. <break time="650ms"/>$1')
+            .replace(/,([\s\n]+|$)/g, ', <break time="320ms"/>$1');
+
+          // SSML completo para Microsoft Edge TTS (estilo existencial sombrío)
+          const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="es-ES">
+  <voice name="${voice}">
+    <mstts:express-as style="sad">
+      <prosody rate="${rate}" pitch="${pitch}">
+        ${textWithBreaks}
+      </prosody>
+    </mstts:express-as>
+  </voice>
+</speak>`;
+
+          // Alternativa con pausas espaciadas si el endpoint rechaza etiquetas SSML directas
+          const spacedText = cleanText
+            .replace(/\.{3}|…/g, '... \n\n ')
+            .replace(/\.([\s\n]+|$)/g, '.\n\n$1')
+            .replace(/,([\s\n]+|$)/g, ',  $1');
 
           const streamPromise = new Promise(async (resolve, reject) => {
             const timer = setTimeout(() => {
@@ -57,13 +80,30 @@ const ttsDevPlugin = () => ({
             }, 12000);
 
             try {
-              const { audioStream } = tts.toStream(cleanText, { rate, pitch });
-              const chunks = [];
-              for await (const chunk of audioStream) {
-                chunks.push(chunk);
+              let tts = new MsEdgeTTS();
+              await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
+              // Intento 1: Formato SSML completo
+              try {
+                const { audioStream } = tts.rawToStream(ssml);
+                const chunks = [];
+                for await (const chunk of audioStream) {
+                  chunks.push(chunk);
+                }
+                clearTimeout(timer);
+                return resolve(Buffer.concat(chunks));
+              } catch (ssmlErr) {
+                // Fallback con pausas espaciadas, rate -18% y pitch -8Hz
+                tts = new MsEdgeTTS();
+                await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+                const { audioStream } = tts.toStream(spacedText, { rate, pitch });
+                const chunks = [];
+                for await (const chunk of audioStream) {
+                  chunks.push(chunk);
+                }
+                clearTimeout(timer);
+                return resolve(Buffer.concat(chunks));
               }
-              clearTimeout(timer);
-              resolve(Buffer.concat(chunks));
             } catch (err) {
               clearTimeout(timer);
               reject(err);

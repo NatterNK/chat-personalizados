@@ -68,8 +68,8 @@ export const VoiceSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
       if (settings.useNeuralVoice !== false) {
         await playNeuralVoice(SAMPLE_PHRASE, {
           voice: settings.voiceURI || 'es-ES-AlvaroNeural',
-          rate: '-10%',
-          pitch: '-5Hz',
+          rate: '-18%',
+          pitch: '-8Hz',
           onStart: () => setIsPlayingSample(true),
           onEnd: () => setIsPlayingSample(false),
           onError: () => setIsPlayingSample(false),
